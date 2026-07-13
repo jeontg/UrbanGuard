@@ -1,0 +1,7 @@
+# Water (road flooding) segmentation model/inference config.
+water_model_path: models/best.pt
+water_conf: 0.10        # best.pt tends to under-detect on raw CCTV -- start low (favor recall)
+iou: 0.50
+imgsz: 640
+device: auto             # auto|cpu|0 (GPU) -- resolve_device() checks actual availability
+process_every_seconds: 1.0   # water changes slowly -- a lower cadence than vehicle tracking (5fps) suffices

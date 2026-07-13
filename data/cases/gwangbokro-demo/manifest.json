@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "id": "gwangbokro-demo",
+  "title": "광복로 군중 안전 분석",
+  "description": "인체 감지, 밀집도 히트맵 및 군중 위험 분석 시연",
+  "location": "광복로 패션거리",
+  "captured_at": null,
+  "status": "complete",
+  "status_label": "분석 완료",
+  "summary": {
+    "people_detected": 39,
+    "max_risk_score": 0.438,
+    "highest_severity": 3,
+    "alert_count": 5,
+    "duration_seconds": 10.0,
+    "source_video": "1280×720 · 24 FPS · H.264",
+    "processed_video": "1280×720 · 1.6 FPS · H.264",
+    "input_image": "1536×1024"
+  },
+  "processing": {
+    "engine": "SAM3 분석 파이프라인 · Google Colab GPU",
+    "execution_location": "Google Colab",
+    "local_mode": "분석 산출물 조회 전용",
+    "prompt": "person",
+    "score_threshold": 0.4,
+    "frame_stride": 15,
+    "heatmap_grid_columns": 96,
+    "note": "로컬 대시보드에서는 모델 추론을 수행하지 않습니다."
+  },
+  "assets": {
+    "input_image": {
+      "kind": "image",
+      "label": "원본 군중 이미지",
+      "description": "Colab 노트북에 입력된 원본 정지 이미지입니다.",
+      "path": "input/crowd_image.png"
+    },
+    "input_video": {
+      "kind": "video",
+      "label": "원본 군중 영상",
+      "description": "10초 길이의 원본 입력 영상입니다.",
+      "path": "input/crowd_video.mp4"
+    },
+    "image_segmentation": {
+      "kind": "image",
+      "label": "SAM3 세그멘테이션 결과",
+      "description": "원본 이미지, 인스턴스 마스크 및 마스크 중첩 밀집도 결과입니다.",
+      "path": "output/crowd_result.png"
+    },
+    "image_heatmap": {
+      "kind": "image",
+      "label": "격자 밀집도 오버레이",
+      "description": "원본 이미지 위에 합성된 격자 기반 밀집도 히트맵입니다.",
+      "path": "output/grid_density_image.png"
+    },
+    "image_heatmap_pure": {
+      "kind": "image",
+      "label": "순수 밀집도 히트맵",
+      "description": "원본 이미지를 제외한 밀집도 히트맵입니다.",
+      "path": "output/grid_density_pure.png"
+    },
+    "video_risk": {
+      "kind": "video",
+      "label": "위험 주석 영상",
+      "description": "감지 박스, 마스크 히트맵, 핫스팟 및 위험 상태가 표시된 영상입니다.",
+      "path": "output/risk_annotated_h264.mp4"
+    },
+    "video_heatmap": {
+      "kind": "video",
+      "label": "격자 히트맵 영상",
+      "description": "추출 프레임으로 생성한 격자 기반 밀집도 히트맵 영상입니다.",
+      "path": "output/grid_heatmap_h264.mp4"
+    },
+    "timeline": {
+      "kind": "image",
+      "label": "위험도 타임라인",
+      "description": "감지 인원, 마스크 점유율 및 종합 위험점수 추이입니다.",
+      "path": "output/risk_timeline.png"
+    },
+    "alerts": {
+      "kind": "json",
+      "label": "경보 이벤트 로그",
+      "description": "시간별 위험 이벤트와 권고 조치가 기록된 JSON 파일입니다.",
+      "path": "metadata/alerts.json"
+    }
+  }
+}

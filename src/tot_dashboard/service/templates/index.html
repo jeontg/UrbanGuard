@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>tot_dashboard — 통합 도로위험·군중안전 대시보드</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <h1>tot_dashboard</h1>
+  <p class="subtitle">침수·교통위험(실시간) + 군중안전 사례(SAM3) 통합 대시보드</p>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="flood">도로위험 블록</button>
+  <button class="tab-btn" data-tab="crowd">군중안전 사례</button>
+</nav>
+
+<main>
+  <section id="tab-flood" class="tab-panel active">
+    <div id="blocks" class="card-grid"></div>
+  </section>
+
+  <section id="tab-crowd" class="tab-panel">
+    <div class="crowd-layout">
+      <div id="case-list" class="card-grid case-list"></div>
+      <div id="case-detail" class="case-detail">
+        <p class="hint">왼쪽에서 사례를 선택하세요.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>window.INITIAL_BLOCKS = {{ blocks | tojson }};</script>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,130 @@
+[
+  {
+    "timestamp_sec": 6.88,
+    "frame": 165,
+    "location": "야간 상업지구-A",
+    "risk_code": "CROWD_SURGE_RISK",
+    "risk_name": "군중급증위험",
+    "severity": 3,
+    "risk_score": 0.394,
+    "context": "위험 없음 — 해당 구역의 보행자 흐름이 안정적이며 특이사항은 없습니다.",
+    "drivers": [
+      "속도급증비↑"
+    ],
+    "hotspot": {
+      "x": 309,
+      "y": 372,
+      "intensity": 2.0
+    },
+    "recommendation": "관할 기관 순찰 강화 권고 / 핫스팟 공유",
+    "alert": true,
+    "notify": {
+      "severity": 3,
+      "channels": [
+        {
+          "ch": "webhook",
+          "ok": true,
+          "info": {
+            "dryrun": true,
+            "kind": "jandi",
+            "body": {
+              "body": "[경계] 야간 상업지구-A · 군중급증위험\nscore 0.39 · 01:32:12",
+              "connectColor": "#FF8C00",
+              "connectInfo": [
+                {
+                  "title": "상황",
+                  "description": "위험 없음 — 해당 구역의 보행자 흐름이 안정적이며 특이사항은 없습니다."
+                },
+                {
+                  "title": "권고조치",
+                  "description": "관할 기관 순찰 강화 권고 / 핫스팟 공유"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "ts": "2026-06-20 01:32:12"
+    }
+  },
+  {
+    "timestamp_sec": 7.5,
+    "frame": 180,
+    "location": "야간 상업지구-A",
+    "risk_code": "CROWD_SURGE_RISK",
+    "risk_name": "군중급증위험",
+    "severity": 3,
+    "risk_score": 0.438,
+    "context": "위험 없음 — 해당 구역의 보행자 흐름이 안정적입니다.",
+    "drivers": [
+      "속도급증비↑"
+    ],
+    "hotspot": {
+      "x": 664,
+      "y": 501,
+      "intensity": 3.0
+    },
+    "recommendation": "관할 기관 순찰 강화 권고 / 핫스팟 공유",
+    "alert": true
+  },
+  {
+    "timestamp_sec": 8.12,
+    "frame": 195,
+    "location": "야간 상업지구-A",
+    "risk_code": "CROWD_SURGE_RISK",
+    "risk_name": "군중급증위험",
+    "severity": 3,
+    "risk_score": 0.419,
+    "context": "위험 없음 — 해당 구역의 보행자 흐름이 안정적이며 특이사항은 없습니다.",
+    "drivers": [
+      "속도급증비↑"
+    ],
+    "hotspot": {
+      "x": 478,
+      "y": 365,
+      "intensity": 2.0
+    },
+    "recommendation": "관할 기관 순찰 강화 권고 / 핫스팟 공유",
+    "alert": true
+  },
+  {
+    "timestamp_sec": 8.75,
+    "frame": 210,
+    "location": "야간 상업지구-A",
+    "risk_code": "CROWD_SURGE_RISK",
+    "risk_name": "군중급증위험",
+    "severity": 3,
+    "risk_score": 0.389,
+    "context": "위험 없음 — 해당 구역의 보행자 이동이 안정적으로 유지되고 있습니다.",
+    "drivers": [
+      "속도급증비↑"
+    ],
+    "hotspot": {
+      "x": 668,
+      "y": 357,
+      "intensity": 2.0
+    },
+    "recommendation": "관할 기관 순찰 강화 권고 / 핫스팟 공유",
+    "alert": true
+  },
+  {
+    "timestamp_sec": 9.38,
+    "frame": 225,
+    "location": "야간 상업지구-A",
+    "risk_code": "CROWD_SURGE_RISK",
+    "risk_name": "군중급증위험",
+    "severity": 3,
+    "risk_score": 0.407,
+    "context": "위험 없음 — 해당 구역의 보행자 통행이 안정적으로 유지되고 있습니다.",
+    "drivers": [
+      "속도급증비↑"
+    ],
+    "hotspot": {
+      "x": 0,
+      "y": 520,
+      "intensity": 3.0
+    },
+    "recommendation": "관할 기관 순찰 강화 권고 / 핫스팟 공유",
+    "alert": true
+  }
+]

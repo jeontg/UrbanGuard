@@ -1,0 +1,31 @@
+{
+  "camera_name": "BLOCK-BEOMNAEGOL",
+  "frame_width": 320,
+  "frame_height": 240,
+  "road_roi": [
+    [
+      [
+        200,
+        39
+      ],
+      [
+        282,
+        40
+      ],
+      [
+        258,
+        239
+      ],
+      [
+        3,
+        182
+      ],
+      [
+        200,
+        41
+      ]
+    ]
+  ],
+  "low_point_roi": [],
+  "lane_threshold_line": []
+}

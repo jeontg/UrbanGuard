@@ -1,0 +1,14 @@
+{
+  "blocks": [
+    {
+      "id": "BLOCK-TEST",
+      "name": "테스트 블록",
+      "coordinates": {"lat": 35.15, "lng": 129.05},
+      "dept": "도로관리과",
+      "source": {"type": "synthetic"},
+      "rainfall": {"type": "sine"},
+      "river": {"type": "none"},
+      "rain": {"peak": 25.0, "period": 6.0, "phase": 0.0}
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+water_model_path: models/best.pt
+object_model_path: models/yolo11s.pt
+water_conf: 0.1
+object_conf: 0.3
+iou: 0.5
+imgsz: 640
+device: auto
+process_every_seconds: 1.0
+person_classes:
+- person
+vehicle_classes:
+- car
+- bus
+- truck
+- motorcycle
+use_tracking: true
+tracker: bytetrack.yaml

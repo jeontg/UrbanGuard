@@ -1,0 +1,25 @@
+weights:
+  area: 0.28
+  low_point: 0.24
+  lane: 0.1
+  expansion: 0.1
+  tire: 0.12
+  person: 0.1
+  traffic: 0.06
+expansion_ref: 0.05
+person_danger_floor: 85.0
+shutdown_rising_floor: 90.0
+grade_bins:
+- 20
+- 40
+- 60
+- 80
+horizons_sec:
+- 5
+- 10
+predict_window_sec: 12.0
+predict_min_points: 3
+trend_surge: 0.03
+trend_rising: 0.005
+trend_falling: -0.005
+eta_max_sec: 600

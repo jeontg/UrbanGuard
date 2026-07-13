@@ -1,0 +1,31 @@
+{
+  "camera_name": "BLOCK-BUSANSTN",
+  "frame_width": 352,
+  "frame_height": 240,
+  "road_roi": [
+    [
+      [
+        315,
+        232
+      ],
+      [
+        256,
+        53
+      ],
+      [
+        231,
+        53
+      ],
+      [
+        191,
+        54
+      ],
+      [
+        76,
+        233
+      ]
+    ]
+  ],
+  "low_point_roi": [],
+  "lane_threshold_line": []
+}

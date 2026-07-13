@@ -1,0 +1,123 @@
+{
+  "_comment": "1 블록 = 1 카메라(source) + 강수(rainfall) + 인접 하천(river). source.type: synthetic|hls|rtsp|video. rainfall.type: sine(기본)|mock|kma(기상청, KMA_SERVICE_KEY 필요). river.type: none(기본)|mock|hrfco. CCTV: 부산시 BusanITSCCTV/CCTVList(hlsAddr).",
+  "blocks": [
+    {
+      "id": "BLOCK-CHORYANG",
+      "name": "초량교차로",
+      "coordinates": {
+        "lat": 35.120005,
+        "lng": 129.042203
+      },
+      "road_attrs": [
+        "교차로"
+      ],
+      "dept": "도로관리과",
+      "source": {
+        "type": "hls",
+        "url": "https://its-stream3.busan.go.kr:8443/rtplive/cctv_7.stream/playlist.m3u8",
+        "cctv_name": "초량교차로"
+      },
+      "rainfall": {
+        "type": "sine"
+      },
+      "river": {
+        "type": "none"
+      },
+      "rain": {
+        "peak": 27.0,
+        "period": 48.0,
+        "phase": 0.0
+      }
+    },
+    {
+      "id": "BLOCK-BUSANSTN",
+      "name": "부산역",
+      "coordinates": {
+        "lat": 35.114967,
+        "lng": 129.039353
+      },
+      "road_attrs": [
+        "역 광장",
+        "교차로"
+      ],
+      "dept": "도로관리과",
+      "source": {
+        "type": "hls",
+        "url": "https://its-stream3.busan.go.kr:8443/rtplive/cctv_6.stream/playlist.m3u8",
+        "cctv_name": "부산역"
+      },
+      "rainfall": {
+        "type": "sine"
+      },
+      "river": {
+        "type": "none"
+      },
+      "rain": {
+        "peak": 24.0,
+        "period": 48.0,
+        "phase": 12.0
+      }
+    },
+    {
+      "id": "BLOCK-BEOMNAEGOL",
+      "name": "범내골교차로",
+      "coordinates": {
+        "lat": 35.147345,
+        "lng": 129.059051
+      },
+      "road_attrs": [
+        "교차로",
+        "저지대"
+      ],
+      "dept": "도로관리과",
+      "source": {
+        "type": "hls",
+        "url": "https://its-stream3.busan.go.kr:8443/rtplive/cctv_10.stream/playlist.m3u8",
+        "cctv_name": "범내골교차로"
+      },
+      "rainfall": {
+        "type": "sine"
+      },
+      "river": {
+        "type": "none"
+      },
+      "rain": {
+        "peak": 29.0,
+        "period": 46.0,
+        "phase": 24.0
+      }
+    }
+  ],
+  "_disabled_blocks_note": "BLOCK-JAYUMARKET(자유시장, cctv_9)은 HLS 송출 장애로 임시 제외함. 카메라가 복구되면 아래 항목을 blocks 배열에 다시 넣으면 됨.",
+  "_disabled_blocks": [
+    {
+      "id": "BLOCK-JAYUMARKET",
+      "name": "자유시장",
+      "coordinates": {
+        "lat": 35.141795,
+        "lng": 129.059168
+      },
+      "road_attrs": [
+        "시장",
+        "저지대"
+      ],
+      "dept": "도로관리과",
+      "source": {
+        "type": "hls",
+        "url": "https://its-stream3.busan.go.kr:8443/rtplive/cctv_9.stream/playlist.m3u8",
+        "cctv_name": "자유시장"
+      },
+      "rainfall": {
+        "type": "sine"
+      },
+      "river": {
+        "type": "none"
+      },
+      "rain": {
+        "peak": 26.0,
+        "period": 50.0,
+        "phase": 36.0
+      }
+    }
+  ]
+}

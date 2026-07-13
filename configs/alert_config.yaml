@@ -1,0 +1,27 @@
+# Alert engine configuration (Tab 4 + Section 9 of the master plan).
+# Alert levels are 1..5 (Level 0 is never used).
+#
+# The engine is rule-based and uses water_area_ratio inside the road ROI as the
+# primary signal, combined with expansion trend, low-point presence, lane-line
+# crossing, and traffic / person context. Tune thresholds per camera.
+
+# --- water_area_ratio thresholds (fraction of road ROI covered by water) ---
+ratio_watch: 0.02       # >= this -> at least Watch (L2)
+ratio_caution: 0.08     # >= this -> at least Caution (L3)
+ratio_danger: 0.20      # >= this -> at least Danger (L4)
+ratio_shutdown: 0.35    # >= this -> Road Shutdown Recommended (L5)
+
+# --- water expansion (ratio increase per processed frame, ~per second) ---
+expansion_rate_rising: 0.01   # >= this counts as "water is expanding"
+
+# --- persistence: a condition must hold this many processed frames to escalate ---
+# At 1 FPS, 3 frames ~= 3 seconds. Prevents one-frame false-positive panic.
+persistence_frames: 3
+
+# --- traffic / object context that can push the level up ---
+stopped_speed_px: 2.0         # avg vehicle pixel speed below this = "stopped"
+slow_speed_px: 8.0            # below this (and above stopped) = "slow"
+jam_min_vehicles: 3           # >= this many near-stationary vehicles = jam candidate
+
+# --- de-escalation smoothing: how many calm frames before the level drops ---
+cooldown_frames: 3

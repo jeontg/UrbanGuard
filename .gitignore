@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# secrets
+.env
+
+# model weights (large binaries — see docs/integration_plan.md section 5-7 /
+# section 8 for how these are provisioned outside git; README documents how
+# to obtain them). Small enough test/demo media (data/samples/, data/cases/)
+# ARE committed -- only these two extensions and the generated-output
+# directories below are excluded.
+*.pt
+*.pth
+
+# generated at runtime, not shipped fixtures
+data/reports/
+data/runs/
+data/recordings/
+data/raw_archive/
+
+.pytest_cache/
+.mypy_cache/
+
+# Claude Code session runtime state (not project config)
+.claude/scheduled_tasks.lock
