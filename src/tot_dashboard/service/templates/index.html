@@ -14,6 +14,7 @@
 <nav class="tabs">
   <button class="tab-btn active" data-tab="flood">도로위험 블록</button>
   <button class="tab-btn" data-tab="crowd">군중안전 사례</button>
+  <button class="tab-btn" data-tab="runs">분석 결과</button>
 </nav>
 
 <main>
@@ -26,6 +27,16 @@
       <div id="case-list" class="card-grid case-list"></div>
       <div id="case-detail" class="case-detail">
         <p class="hint">왼쪽에서 사례를 선택하세요.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-runs" class="tab-panel">
+    <p class="hint">tot-flood-standalone --video ... 로 실행한 분석 결과입니다(ROI/물/탐지 오버레이 포함).</p>
+    <div class="crowd-layout">
+      <div id="run-list" class="card-grid case-list"></div>
+      <div id="run-detail" class="case-detail">
+        <p class="hint">왼쪽에서 분석 결과를 선택하세요.</p>
       </div>
     </div>
   </section>

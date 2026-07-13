@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -32,6 +33,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..common import cctv_capture as cap
 from ..common.case_archive.catalog import CaseCatalog
+from ..common.case_archive.run_writer import RUNS_DIR, list_runs, load_run
 from ..common.config import PROJECT_ROOT
 from ..common.notifier import AlertNotifier, DuplicateNotificationError, NotificationConfigurationError
 from ..traffic_weather.agents.vlm_situation import VlmSituationAgent
@@ -240,6 +242,22 @@ async def api_send_notification(case_id: str, request: NotificationRequest):
         raise HTTPException(status_code=502, detail=f"SOLAPI 발송 요청에 실패했습니다: {exc}") from exc
 
 
+@app.get("/media/flood-runs/{run_id}/{asset_path:path}")
+def api_flood_run_media(run_id: str, asset_path: str):
+    # Registered BEFORE /media/{case_id}/{asset_path:path} below: Starlette
+    # matches routes in registration order (first match wins, not
+    # most-specific-wins), so without this ordering a request to
+    # /media/flood-runs/<run_id>/... would match the case-media route first
+    # (with case_id="flood-runs") and 404 there instead of reaching this one.
+    run_dir = _resolve_run_dir(run_id)
+    file_path = (run_dir / asset_path).resolve()
+    if file_path != run_dir and run_dir not in file_path.parents:
+        raise HTTPException(status_code=404, detail="미디어 파일을 찾을 수 없습니다.")
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="미디어 파일을 찾을 수 없습니다.")
+    return FileResponse(file_path, filename=None)
+
+
 @app.get("/media/{case_id}/{asset_path:path}")
 def api_media(case_id: str, asset_path: str):
     try:
@@ -249,6 +267,65 @@ def api_media(case_id: str, asset_path: str):
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="미디어 파일을 찾을 수 없습니다.")
     return FileResponse(file_path, filename=None)
+
+
+# ── flood standalone-pipeline runs (tot-flood-standalone --video ...) ───────
+# Archived by common.case_archive.run_writer.RunWriter (annotated frames/video
+# already have the ROI/water/detection overlay drawn in -- see
+# flood.visualization.annotate_combined) so a CLI analysis run shows up here
+# without any extra step.
+_RUN_ID_RE = re.compile(r"^run_[0-9]{8}_[0-9]{6}$")
+
+
+def _resolve_run_dir(run_id: str) -> Path:
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise HTTPException(status_code=404, detail="분석 결과를 찾을 수 없습니다.")
+    run_dir = (RUNS_DIR / run_id).resolve()
+    if run_dir.parent != RUNS_DIR.resolve() or not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail="분석 결과를 찾을 수 없습니다.")
+    return run_dir
+
+
+@app.get("/api/flood-runs")
+def api_list_flood_runs():
+    runs = list_runs()
+    return {
+        "runs": [
+            {
+                "run_id": r.run_id,
+                "frames": r.frames,
+                "max_alert_level": r.max_alert_level,
+                "source_name": r.source_name,
+                "has_video": r.has_video,
+            }
+            for r in runs
+        ]
+    }
+
+
+def _records_json_safe(df):
+    """metrics.csv/alert_log.csv leave some numeric columns blank (e.g.
+    avg_vehicle_pixel_speed when tracking is off); pandas reads those back as
+    NaN, which plain json.dumps (used by FastAPI's default response class)
+    rejects with ValueError. Swap NaN -> None so it serializes as JSON null."""
+    if df.empty:
+        return []
+    return df.astype(object).where(df.notna(), None).to_dict(orient="records")
+
+
+@app.get("/api/flood-runs/{run_id}")
+def api_flood_run_detail(run_id: str):
+    run_dir = _resolve_run_dir(run_id)
+    data = load_run(run_dir)
+    return {
+        "run_id": run_id,
+        "config": data["config"],
+        "video_url": f"/media/flood-runs/{run_id}/processed_video.mp4" if data["video"] else None,
+        "snapshot_urls": [f"/media/flood-runs/{run_id}/snapshots/{p.name}" for p in data["snapshots"]],
+        "frame_urls": [f"/media/flood-runs/{run_id}/annotated_frames/{p.name}" for p in data["annotated_frames"]],
+        "metrics": _records_json_safe(data["metrics"]),
+        "alerts": _records_json_safe(data["alerts"]),
+    }
 
 
 def run() -> None:

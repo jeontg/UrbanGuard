@@ -118,6 +118,66 @@ async function loadCaseDetail(caseId) {
   `;
 }
 
+// ---- Flood standalone-pipeline runs (tot-flood-standalone --video ...) ----
+async function loadRunList() {
+  const container = $("#run-list");
+  const res = await fetch("/api/flood-runs");
+  const data = await res.json();
+  container.innerHTML = "";
+  const runs = data.runs || [];
+  if (!runs.length) {
+    container.innerHTML = '<p class="hint">아직 분석 결과가 없습니다. tot-flood-standalone --video ... 로 실행해 보세요.</p>';
+    return;
+  }
+  for (const r of runs) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <h3>${r.run_id}</h3>
+      <div class="row">입력 <strong>${r.source_name}</strong></div>
+      <div class="row">프레임 수 <strong>${r.frames}</strong></div>
+      <div class="row">최고 경보 <strong>${r.max_alert_level}</strong></div>
+    `;
+    card.addEventListener("click", () => loadRunDetail(r.run_id));
+    container.appendChild(card);
+  }
+}
+
+async function loadRunDetail(runId) {
+  const detail = $("#run-detail");
+  detail.innerHTML = '<p class="hint">불러오는 중...</p>';
+  const res = await fetch(`/api/flood-runs/${encodeURIComponent(runId)}`);
+  if (!res.ok) {
+    detail.innerHTML = '<p class="hint">분석 결과를 불러오지 못했습니다.</p>';
+    return;
+  }
+  const r = await res.json();
+  const videoHtml = r.video_url
+    ? `<video src="${r.video_url}" controls style="max-width:100%"></video>`
+    : '<p class="hint">주석 영상 없음</p>';
+
+  const alertsHtml = (r.alerts || [])
+    .map(
+      (a) => `<div class="alert-row"><span>t=${a.timestamp_sec}s · 레벨 ${a.alert_level} · ${a.alert_reason}</span></div>`
+    )
+    .join("") || '<p class="hint">경보 이벤트 없음</p>';
+
+  const lastMetric = (r.metrics || [])[r.metrics.length - 1];
+  const summaryHtml = lastMetric
+    ? `<div class="row">최종 물 비율 <strong>${(lastMetric.water_area_ratio * 100).toFixed(1)}%</strong></div>
+       <div class="row">최종 위험도 <strong>${lastMetric.risk_score} (등급 ${lastMetric.risk_grade})</strong></div>`
+    : "";
+
+  detail.innerHTML = `
+    <h2>${r.run_id}</h2>
+    <div class="asset-grid">${videoHtml}</div>
+    ${summaryHtml}
+    <h3>경보 로그</h3>
+    ${alertsHtml}
+    <p class="status-line">총 ${r.metrics.length}개 프레임 분석됨</p>
+  `;
+}
+
 window.sendNotification = async function (caseId, messageId, btn) {
   btn.disabled = true;
   btn.textContent = "발송 중...";
@@ -144,3 +204,4 @@ initTabs();
 pollRisk();
 setInterval(pollRisk, 2000);
 loadCaseList();
+loadRunList();

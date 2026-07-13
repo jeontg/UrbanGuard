@@ -26,7 +26,7 @@ from typing import Any, Iterator
 import numpy as np
 
 from ..common.models_loader import ModelBundle, load_models
-from ..common.roi import RoiConfig, point_in_polygons, water_crosses_line
+from ..common.roi import RoiConfig, load_roi_config, point_in_polygons, water_crosses_line
 from ..common.video_io import iter_source, source_name
 from ..models import TrafficState
 from . import visualization as viz
@@ -352,23 +352,52 @@ def run_to_completion(pipeline: Pipeline, source: dict[str, Any], writer_factory
 
 
 def main() -> None:
-    """CLI entry point (``tot-flood-standalone``): headless single-video run."""
+    """CLI entry point (``tot-flood-standalone``): headless single-video run.
+
+    By default the run is archived via ``common.case_archive.run_writer.RunWriter``
+    (annotated frames + video, each with the ROI/water/detection overlay drawn
+    in -- see ``FrameResult.annotated_bgr`` above) so it shows up in the
+    ``tot-service`` dashboard's "분석 결과" (Analysis Results) tab. Pass
+    ``--no-archive`` to skip that and only print per-frame numbers.
+    """
     import argparse
+
+    from ..common.case_archive.run_writer import RunWriter
 
     ap = argparse.ArgumentParser(description="Standalone single-camera flood pipeline")
     ap.add_argument("--video", required=True, help="path to a video file")
     ap.add_argument("--every", type=float, default=1.0, help="seconds between processed frames")
+    ap.add_argument("--roi", default=None,
+                    help="path to a common.roi RoiConfig JSON file (e.g. configs/roi/UNDERPATH-01.json). "
+                         "Without this, water_area_ratio is measured over the WHOLE frame, not just "
+                         "the road, which is rarely what you want for a real camera.")
+    ap.add_argument("--no-archive", action="store_true",
+                    help="don't save annotated frames/video/CSV under data/runs/ -- "
+                         "just print per-frame numbers")
     args = ap.parse_args()
 
-    pipeline = Pipeline.from_config()
+    roi = load_roi_config(args.roi) if args.roi else RoiConfig()
+    pipeline = Pipeline.from_config(roi=roi)
     source = {"type": "video", "path": args.video}
-    for frame_number, ts, frame in iter_source(source, args.every):
-        result = pipeline.process_frame(frame, frame_number, ts)
+
+    save = not args.no_archive
+    writer = None
+    for result, writer in process_run(pipeline, source, save=save,
+                                      writer_factory=RunWriter if save else None):
         print(
-            f"frame={frame_number} t={ts:.1f}s "
+            f"frame={result.frame_number} t={result.timestamp_sec:.1f}s "
             f"water_ratio={result.metrics.water_area_ratio:.4f} "
             f"alert={result.metrics.alert_level} risk={result.metrics.risk_score}"
         )
+
+    if writer is not None:
+        summary = writer.finalize()
+        print(f"\n[archived] run_id={summary['run_id']} frames={summary['frames']} "
+              f"max_alert_level={summary['max_alert_level']}")
+        print(f"  saved to: {summary['run_dir']}")
+        print(f"  view in the dashboard (start it with `tot-service`) under "
+              f"the '분석 결과' tab, or at "
+              f"/api/flood-runs/{summary['run_id']}")
 
 
 if __name__ == "__main__":

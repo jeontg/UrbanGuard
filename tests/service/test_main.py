@@ -98,3 +98,37 @@ def test_crowd_notification_dry_run_send(client):
     )
     assert res.status_code == 200
     assert res.json()["dry_run"] is True
+
+
+def test_flood_run_archived_by_standalone_pipeline_is_visible_in_dashboard(client):
+    """Reproduces the user-reported gap: running ``tot-flood-standalone
+    --video ...`` must produce something visible in the dashboard, with the
+    ROI/water/detection overlay actually drawn into the saved video/frames.
+    """
+    from tot_dashboard.common.case_archive.run_writer import RunWriter
+    from tot_dashboard.common.config import PROJECT_ROOT
+    from tot_dashboard.flood.standalone_pipeline import Pipeline, process_run
+
+    sample_video = PROJECT_ROOT / "data" / "samples" / "flood" / "underpath_flood1.mp4"
+    pipeline = Pipeline.from_config()
+    source = {"type": "video", "path": str(sample_video)}
+    writer = None
+    for _, writer in process_run(pipeline, source, save=True, writer_factory=RunWriter):
+        pass
+    summary = writer.finalize()
+
+    listing = client.get("/api/flood-runs").json()
+    run_ids = [r["run_id"] for r in listing["runs"]]
+    assert summary["run_id"] in run_ids
+
+    detail = client.get(f"/api/flood-runs/{summary['run_id']}").json()
+    assert detail["video_url"] == f"/media/flood-runs/{summary['run_id']}/processed_video.mp4"
+    assert len(detail["metrics"]) == summary["frames"]
+
+    video_res = client.get(detail["video_url"])
+    assert video_res.status_code == 200
+    assert video_res.headers["content-type"].startswith("video/")
+
+    # path traversal must still be rejected
+    escape = client.get(f"/media/flood-runs/{summary['run_id']}/../../../pyproject.toml")
+    assert escape.status_code == 404
