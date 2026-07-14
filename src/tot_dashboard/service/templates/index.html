@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tot_dashboard — 통합 도로위험·군중안전 대시보드</title>
 <link rel="stylesheet" href="/static/styles.css">
 </head>
@@ -18,8 +19,15 @@
 </nav>
 
 <main>
+  <!-- flood3 원본 대시보드를 그대로 이식한 탭 (docs/integration_plan.md 참고) -->
   <section id="tab-flood" class="tab-panel active">
-    <div id="blocks" class="card-grid"></div>
+    <div class="flood3-status"><span id="mode"></span><span id="dot" class="dot"></span><span id="status">연결 중…</span></div>
+    <div id="rainbar" class="rainbar"></div>
+    <div class="tlhead">교차로별 위험등급 타임라인
+      <span class="legend"><i style="background:#3fb950"></i>관심<i style="background:#d4a017"></i>주의<i style="background:#e8843b"></i>경계<i style="background:#e5484d"></i>심각</span>
+    </div>
+    <div id="timelines" class="timelines"></div>
+    <div id="grid" class="grid"></div>
   </section>
 
   <section id="tab-crowd" class="tab-panel">
@@ -42,7 +50,40 @@
   </section>
 </main>
 
+<!-- 실시간 CCTV 모달 -- ROI 오버레이 포함 (flood3 원본에는 없던 추가 기능) -->
+<div id="livemodal" class="modal hidden">
+  <div class="modalbox">
+    <div class="modalhead"><span id="livetitle"></span><button onclick="closeLive()">✕ 닫기</button></div>
+    <div class="video-wrap">
+      <video id="livevideo" controls autoplay muted playsinline></video>
+      <svg id="liveroi" class="roi-overlay" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="roi-legend">
+      <span><i style="background:#3fb950"></i>도로 ROI</span>
+      <span><i style="background:#e5484d"></i>저지대 ROI</span>
+      <span><i style="background:#58a6ff"></i>차선 기준선</span>
+      <span id="roi-note" class="roi-note"></span>
+    </div>
+    <div class="livectrl">
+      <label>녹화 길이 <input id="recsec" type="number" value="10" min="3" max="30"> 초</label>
+      <button id="recbtn" class="livebtn" onclick="recordLive()">⏺ 녹화 저장(mp4)</button>
+      <span id="recstat" class="recstat"></span>
+    </div>
+    <div id="liveerr" class="liveerr"></div>
+  </div>
+</div>
+<div id="reportmodal" class="modal hidden">
+  <div class="modalbox">
+    <div class="modalhead"><span id="reporttitle">사건 브리핑</span>
+      <span><button onclick="downloadReport()">⬇ .md 다운로드</button>
+      <button onclick="closeReport()">✕ 닫기</button></span></div>
+    <div id="reportsrc" class="srcline"></div>
+    <pre id="reportbody" class="reportmd"></pre>
+  </div>
+</div>
+
 <script>window.INITIAL_BLOCKS = {{ blocks | tojson }};</script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

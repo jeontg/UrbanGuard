@@ -36,6 +36,7 @@ from ..common.case_archive.catalog import CaseCatalog
 from ..common.case_archive.run_writer import RUNS_DIR, list_runs, load_run
 from ..common.config import PROJECT_ROOT
 from ..common.notifier import AlertNotifier, DuplicateNotificationError, NotificationConfigurationError
+from ..common.roi import load_roi_config
 from ..traffic_weather.agents.vlm_situation import VlmSituationAgent
 from ..traffic_weather.report_generator import build_briefing_from_snapshot
 from .runner import PipelineRunner
@@ -148,6 +149,20 @@ def api_record(block_id: str, seconds: int = 10):
     if not ok or not path.exists():
         return {"error": f"recording failed: {msg}"}
     return FileResponse(path, media_type="video/mp4", filename=f"{b['name']}_{seconds}s.mp4")
+
+
+@app.get("/api/roi/{block_id}")
+def api_roi(block_id: str):
+    """ROI polygons for a block, for the live-CCTV modal's overlay (a feature
+    not present in flood3's original dashboard, added on request -- see
+    docs/integration_plan.md). ``common.roi.RoiConfig.to_dict()`` already
+    returns coordinates in the frame's own pixel space plus
+    frame_width/frame_height, so the frontend can size an SVG viewBox to
+    match regardless of how large the video is actually rendered."""
+    path = PROJECT_ROOT / "configs" / "roi" / f"{block_id}.json"
+    if not path.exists():
+        return {"error": "no ROI configured for this block", "block_id": block_id}
+    return load_roi_config(path).to_dict()
 
 
 @app.get("/api/report/{block_id}")

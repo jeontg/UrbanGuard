@@ -102,3 +102,107 @@ main { padding: 24px 32px 48px; }
 .alert-row button:disabled { background: #444; cursor: not-allowed; }
 
 .status-line { color: var(--muted); font-size: 0.85rem; margin-top: 12px; }
+
+/* ============================================================
+   "도로위험 블록" 탭 -- flood3의 원본 대시보드(service/static/styles.css)를
+   그대로 이식. #tab-flood 안에서만 적용되도록 스코프를 줬다(다른 탭의
+   .card/.metrics 등과 이름이 겹쳐도 서로 영향을 주지 않게 하기 위함).
+   모달(livemodal/reportmodal)은 탭 밖(본문 형제 요소)에 있으므로 그 안의
+   규칙은 스코프 없이 전역으로 둔다.
+   ============================================================ */
+#tab-flood .flood3-status { font-size: 13px; color: #8b949e; display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
+#tab-flood .dot { width: 9px; height: 9px; border-radius: 50%; background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+#tab-flood .bmock { color: #e8843b; font-weight: 600; }
+#tab-flood .breal { color: #3fb950; font-weight: 600; }
+
+#tab-flood .rainbar { border: 1px solid #30363d; border-radius: 10px; background: #161b22; padding: 12px 14px; margin-bottom: 14px; }
+#tab-flood .rainbar.heavy { border-color: #e5484d; background: #2a1417; }
+#tab-flood .rainbar .rtitle { font-weight: 600; font-size: 14px; }
+#tab-flood .rainbar.heavy .rtitle { color: #ff7b72; }
+#tab-flood .rainbar .rsub { margin-top: 6px; font-size: 13px; color: #e8843b; font-weight: 600; }
+#tab-flood .rainbar .plan { margin: 6px 0 0; padding-left: 20px; font-size: 12.5px; color: #c9d1d9; line-height: 1.65; }
+#tab-flood .rainbar .note { margin-top: 8px; font-size: 11.5px; color: #8b949e; }
+#tab-flood .srcwarn { background: #3a2a12; border: 1px solid #b5651d; color: #f0b37e; border-radius: 6px; padding: 7px 10px; font-size: 12.5px; margin-bottom: 8px; }
+#tab-flood .srcok { color: #3fb950; font-size: 12px; margin-bottom: 8px; }
+#tab-flood .judge { margin-top: 8px; font-size: 11.5px; color: #8b949e; border-top: 1px solid #21262d; padding-top: 7px; }
+
+#tab-flood .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+@media (max-width: 900px) { #tab-flood .grid { grid-template-columns: 1fr; } }
+#tab-flood .card { border: 1px solid #30363d; border-radius: 10px; background: #161b22; padding: 12px 14px; }
+#tab-flood .card.heavy { border-color: #e8843b; }
+#tab-flood .chead { display: flex; justify-content: space-between; align-items: center; }
+#tab-flood .chead .name { font-weight: 700; font-size: 15px; }
+#tab-flood .chip { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 20px; color: #0d1117; }
+#tab-flood .card .risk { font-size: 12.5px; color: #c9d1d9; margin: 6px 0; line-height: 1.4; }
+#tab-flood .tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #21262d; color: #8b949e; }
+#tab-flood .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; font-size: 12px; color: #8b949e; margin: 8px 0; }
+#tab-flood .metrics b { color: #e6edf3; font-size: 14px; }
+#tab-flood .metrics .mk { display: block; font-size: 11px; }
+#tab-flood .trend { color: #e8843b; font-weight: 600; }
+#tab-flood .ohdr { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: .4px; margin: 8px 0 4px; }
+#tab-flood .objs { display: flex; flex-direction: column; gap: 3px; max-height: 184px; overflow-y: auto; }
+#tab-flood .obj { display: grid; grid-template-columns: 54px 60px 1fr 40px; align-items: center; gap: 6px; font-size: 12px; }
+#tab-flood .obj .oid { color: #c9d1d9; }
+#tab-flood .obj .ospd { color: #8b949e; text-align: right; }
+#tab-flood .obj .obar { height: 7px; background: #21262d; border-radius: 4px; overflow: hidden; }
+#tab-flood .obj .obar > span { display: block; height: 100%; }
+#tab-flood .obj .odrop { color: #8b949e; text-align: right; }
+#tab-flood .rec { background: #1c2330; border-left: 3px solid #58a6ff; padding: 7px 10px; border-radius: 5px; font-size: 12.5px; margin-top: 10px; }
+#tab-flood .muted { color: #8b949e; }
+#tab-flood .chead-r { display: flex; align-items: center; gap: 8px; }
+#tab-flood .repbtn { background: #2d333b; color: #e6edf3; border: 1px solid #444c56; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
+#tab-flood .repbtn:hover { background: #373e47; }
+
+#tab-flood .tlhead { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #8b949e; margin: 0 2px 6px; }
+#tab-flood .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 3px 0 9px; vertical-align: middle; }
+#tab-flood .timelines { border: 1px solid #30363d; border-radius: 10px; background: #161b22; padding: 10px 12px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 7px; }
+#tab-flood .tl { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; }
+#tab-flood .tlname { font-size: 12px; color: #c9d1d9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tab-flood .tlbars { display: flex; height: 18px; border-radius: 3px; overflow: hidden; background: #21262d; }
+#tab-flood .tlbars > span { flex: 1 1 auto; min-width: 1px; }
+
+#tab-flood .flood { margin-top: 10px; padding-top: 10px; border-top: 1px solid #21262d; }
+#tab-flood .flood-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+#tab-flood .flood-head .ftitle { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: .4px; }
+#tab-flood .gauge { display: flex; align-items: center; gap: 10px; }
+#tab-flood .gauge-score { font-size: 22px; font-weight: 800; }
+#tab-flood .gauge-grade { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 20px; color: #0d1117; }
+#tab-flood .gauge-bar { flex: 1; height: 8px; background: #21262d; border-radius: 5px; overflow: hidden; }
+#tab-flood .gauge-bar > span { display: block; height: 100%; border-radius: 5px; }
+#tab-flood .flood-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 10px; font-size: 12px; color: #8b949e; margin: 8px 0 4px; }
+#tab-flood .flood-metrics b { color: #e6edf3; }
+#tab-flood .flood-reason { font-size: 12px; color: #c9d1d9; margin-top: 4px; }
+#tab-flood .flood-pred { font-size: 11.5px; color: #8b949e; margin-top: 6px; border-top: 1px dashed #21262d; padding-top: 6px; }
+#tab-flood .flood-pred b { color: #e6edf3; }
+#tab-flood .flood-noroi { color: #e8843b; }
+#tab-flood .flood-na { font-size: 12px; color: #8b949e; }
+#tab-flood .trend-surge, #tab-flood .trend-rising { color: #e5484d; font-weight: 700; }
+#tab-flood .trend-falling { color: #3fb950; font-weight: 700; }
+#tab-flood .trend-stable { color: #8b949e; }
+
+/* ── 모달(실시간 CCTV / 사건 브리핑) -- 탭 밖, 페이지 전역 ── */
+.livebtn { background: #1f6feb; color: #fff; border: 0; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
+.livebtn:hover { background: #388bfd; }
+.reportmd { white-space: pre-wrap; word-break: break-word; font-family: "Consolas", "D2Coding", ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; color: #e6edf3; background: #0b0e13; border: 1px solid #21262d; border-radius: 8px; padding: 12px 14px; max-height: 68vh; overflow-y: auto; margin: 6px 0 0; }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal.hidden { display: none; }
+.modalbox { background: #0d1117; border: 1px solid #30363d; border-radius: 10px; padding: 12px; width: min(820px, 92vw); }
+.modalhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 600; }
+.modalhead button { background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.liveerr { color: #e5484d; font-size: 12px; margin-top: 6px; min-height: 14px; }
+.srcline { font-size: 11px; color: #8b949e; margin-top: 6px; }
+.src-mock { color: #e8843b; font-weight: 600; }
+.src-real { color: #3fb950; font-weight: 600; }
+.livectrl { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 13px; flex-wrap: wrap; }
+.livectrl input { background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 5px; padding: 3px; width: 52px; }
+.recstat { color: #d4a017; font-size: 12px; }
+
+/* ── 실시간 CCTV 비디오 위 ROI 오버레이 -- flood3 원본에는 없던 추가 기능.
+   비디오와 같은 박스 크기(position:relative 래퍼 + absolute 오버레이)로 두고,
+   SVG viewBox를 ROI 저장 당시의 frame_width/height로 맞춰 좌표를 그대로 사용한다. */
+.video-wrap { position: relative; }
+#livevideo { width: 100%; max-height: 70vh; background: #000; border-radius: 6px; display: block; }
+.roi-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.roi-legend { display: flex; gap: 14px; align-items: center; font-size: 11.5px; color: #8b949e; margin-top: 6px; flex-wrap: wrap; }
+.roi-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.roi-note { color: #e8843b; }

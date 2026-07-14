@@ -100,6 +100,18 @@ def test_crowd_notification_dry_run_send(client):
     assert res.json()["dry_run"] is True
 
 
+def test_roi_endpoint_for_the_live_video_overlay(client):
+    # BLOCK-TEST (the synthetic test fixture block) has no ROI file -> clear error, not a crash
+    missing = client.get("/api/roi/BLOCK-TEST").json()
+    assert missing["error"]
+
+    # a real ROI file shipped in configs/roi/ should return actual polygons
+    real = client.get("/api/roi/BLOCK-CHORYANG").json()
+    assert real["frame_width"] > 0
+    assert real["frame_height"] > 0
+    assert isinstance(real["road_roi"], list)
+
+
 def test_flood_run_archived_by_standalone_pipeline_is_visible_in_dashboard(client):
     """Reproduces the user-reported gap: running ``tot-flood-standalone
     --video ...`` must produce something visible in the dashboard, with the
