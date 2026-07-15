@@ -45,7 +45,7 @@ def test_health_reports_both_domains(client):
 def test_index_page_renders(client):
     res = client.get("/")
     assert res.status_code == 200
-    assert "tot_dashboard" in res.text
+    assert "부산광역시 스마트도시 특화단지 서비스" in res.text
 
 
 def test_flood_blocks_and_risk_endpoints(client):

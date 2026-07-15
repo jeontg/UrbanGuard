@@ -79,7 +79,8 @@ async function loadRoiOverlay(blockId) {
   try {
     const roi = await (await fetch(`/api/roi/${encodeURIComponent(blockId)}`)).json();
     if (roi.error || !roi.frame_width) {
-      note.textContent = "⚠ 이 블록은 ROI가 설정되어 있지 않습니다.";
+      note.innerHTML = `⚠ 이 블록은 ROI가 설정되어 있지 않습니다. 로컬 터미널에서 실행해 캘리브레이션하세요:<br>`
+        + `<code>python scripts\\roi_editor.py --block ${blockId}</code>`;
       return;
     }
     svg.setAttribute("viewBox", `0 0 ${roi.frame_width} ${roi.frame_height}`);
@@ -108,7 +109,8 @@ async function loadRoiOverlay(blockId) {
       svg.appendChild(line);
     }
     if (!roi.road_roi || !roi.road_roi.length) {
-      note.textContent = "⚠ 도로 ROI 미설정 — 프레임 전체 기준(정확도 낮음)";
+      note.innerHTML = `⚠ 도로 ROI 미설정 — 프레임 전체 기준(정확도 낮음). 캘리브레이션:<br>`
+        + `<code>python scripts\\roi_editor.py --block ${blockId}</code>`;
     }
   } catch (e) {
     note.textContent = "ROI를 불러오지 못했습니다.";

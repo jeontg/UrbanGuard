@@ -25,7 +25,7 @@ header {
   padding: 24px 32px 8px;
 }
 header h1 { margin: 0; font-size: 1.6rem; }
-.subtitle { color: var(--muted); margin: 4px 0 0; }
+.subtitle { color: var(--muted); margin: 4px 0 0; font-size: 1.15rem; }
 
 .tabs {
   display: flex;
@@ -205,4 +205,5 @@ main { padding: 24px 32px 48px; }
 .roi-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .roi-legend { display: flex; gap: 14px; align-items: center; font-size: 11.5px; color: #8b949e; margin-top: 6px; flex-wrap: wrap; }
 .roi-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
-.roi-note { color: #e8843b; }
+.roi-note { color: #e8843b; line-height: 1.6; }
+.roi-note code { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 2px 6px; color: #e6edf3; font-family: "Consolas", "D2Coding", ui-monospace, monospace; }
