@@ -1,0 +1,159 @@
+{# S-98 위험유형별 SOP 관리.
+
+   왜 있나
+     지금 SOP 는 「도메인 × 등급」 두 축으로만 골라, 「침수」면 지하차도든
+     배수로든 같은 체크리스트가 나온다. 실제로는 조치가 다르다.
+     경남 SFR-012 「단계별 SOP 를 자동으로 **도, 시·군별로** 제시」. #}
+{% extends "_layout.html" %}
+{% block title %}위험유형별 SOP 관리 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+
+<div class="ug-page-head">
+  <h2>위험유형별 SOP 관리 <span style="font-size:.8rem;color:var(--muted)">S-98</span></h2>
+  <p>세분류마다 <b>다른 조치</b>가 필요할 때, 그 단계를 여기서 붙입니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if errors %}
+<p class="ug-error" role="alert">{% for e in errors %}{{ e }}<br>{% endfor %}</p>
+{% endif %}
+
+<section class="ug-card" style="margin-bottom:16px">
+  <h3>이 화면이 하는 일</h3>
+  <p class="ug-note">
+    ★ <b>여기서 붙인 단계는 기본 SOP에 <u>더해집니다</u>. 갈아치우지 않습니다.</b>
+    세분류는 대분류의 조치를 포함하고 더 있습니다 — 지하차도 침수도 침수라서
+    「영상으로 현장 확인」은 그대로 필요합니다.
+  </p>
+  <p class="ug-note">
+    ⚠️ <b>연결이 하나도 없으면 지금까지와 완전히 같게 동작합니다.</b>
+    비어 있다고 SOP가 안 나오는 것이 아닙니다.
+  </p>
+  <p class="ug-note">
+    ⚠️ <b>단계 자체는 여기서 만들지 않습니다.</b> 단계는
+    <a href="/settings/sop">디지털 SOP (S-86)</a>에서 만들고, 여기서는
+    <b>어디에 붙일지만</b> 정합니다.
+  </p>
+</section>
+
+<section class="ug-card" style="margin-bottom:16px">
+  <h3>연결 추가</h3>
+  <form method="post" action="/settings/hazard-sop/add">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <div class="ug-field" style="margin:0;min-width:190px">
+        <label for="hs-type">위험유형</label>
+        <select id="hs-type" name="hazard_type_code"
+                style="width:100%;padding:9px;background:var(--bg);color:var(--text);
+                       border:1px solid var(--border);border-radius:8px">
+          {% for t in types %}
+          <option value="{{ t.code }}">{{ t.label }}
+            {%- if not t.detectable %} (탐지 모델 없음){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="ug-field" style="margin:0;min-width:120px">
+        <label for="hs-level">등급</label>
+        <select id="hs-level" name="level_code"
+                style="width:100%;padding:9px;background:var(--bg);color:var(--text);
+                       border:1px solid var(--border);border-radius:8px">
+          <option value="">{{ any_label }}</option>
+          {% for lv in levels %}<option value="{{ lv }}">{{ lv }}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div class="ug-field" style="margin:0;min-width:150px">
+        <label for="hs-zone">구역</label>
+        <select id="hs-zone" name="zone_id"
+                style="width:100%;padding:9px;background:var(--bg);color:var(--text);
+                       border:1px solid var(--border);border-radius:8px">
+          <option value="">{{ any_label }}</option>
+          {% for z in zones %}<option value="{{ z.id }}">{{ z.name }}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div class="ug-field" style="margin:0;min-width:260px;flex:1">
+        <label for="hs-step">붙일 SOP 단계</label>
+        <select id="hs-step" name="sop_step_id"
+                style="width:100%;padding:9px;background:var(--bg);color:var(--text);
+                       border:1px solid var(--border);border-radius:8px">
+          {% for s in steps %}
+          <option value="{{ s.id }}">{{ s.title }}
+            <span>— {{ s.domain or any_label }} / {{ s.level or any_label }}</span></option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="ug-field" style="margin:0;max-width:90px">
+        <label for="hs-seq">순서</label>
+        <input id="hs-seq" name="seq" value="0" inputmode="numeric"
+               style="width:100%;padding:9px;background:var(--bg);color:var(--text);
+                      border:1px solid var(--border);border-radius:8px"></div>
+
+      <button class="ug-btn" type="submit"
+              style="width:auto;padding:10px 20px">추가</button>
+    </div>
+  </form>
+
+  {% if not zones %}
+  <p class="ug-note" style="margin-top:10px">
+    ⚠️ <b>등록된 구역이 없어 「{{ any_label }}」만 고를 수 있습니다.</b>
+    도·시군별로 다르게 주려면 구역을 먼저 등록해야 합니다
+    (경남 SFR-012 「도, 시·군별」).
+  </p>
+  {% endif %}
+</section>
+
+<section class="ug-card">
+  <h3>현재 연결 <span style="font-weight:400;font-size:.85rem;color:var(--muted)">
+    {{ rows|length }}건</span></h3>
+
+  {% if rows %}
+  <table class="ug-table">
+    <thead><tr>
+      <th style="width:150px">위험유형</th>
+      <th style="width:90px">등급</th>
+      <th style="width:120px">구역</th>
+      <th>SOP 단계</th>
+      <th style="width:70px">순서</th>
+      <th style="width:80px">　</th>
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><b>{{ r.hazard_label }}</b>
+          <div style="font-size:.75rem;color:var(--muted)">{{ r.hazard_code }}</div></td>
+        <td>{{ r.level }}</td>
+        <td>{{ r.zone }}</td>
+        <td>{% if r.step_missing %}
+            <span style="color:#e5484d">⚠ {{ r.step_title }}</span>
+            {% else %}{{ r.step_title }}{% endif %}</td>
+        <td>{{ r.seq }}</td>
+        <td>
+          <form method="post" action="/settings/hazard-sop/delete"
+                onsubmit="return confirm('이 연결을 지웁니다.')">
+            <input type="hidden" name="row_id" value="{{ r.id }}">
+            <button class="ug-btn" type="submit"
+                    style="width:auto;padding:5px 12px;font-size:.8rem">삭제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="ug-note">
+    연결이 없습니다. <b>지금은 「도메인 × 등급」 기본 매칭만</b> 쓰이며,
+    이는 정상 동작입니다.
+  </p>
+  {% endif %}
+
+  <p class="ug-note" style="margin-top:12px">
+    ⚠️ <b>여기 심어 둔 기본 연결은 어느 기관의 행동매뉴얼도 아닙니다.</b>
+    「이 칸에 무엇을 적어야 하는가」를 보여 주는 뼈대이며,
+    <b>도입 기관의 실제 매뉴얼로 교체해야 합니다.</b>
+  </p>
+</section>
+
+{% endblock %}

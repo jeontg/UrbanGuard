@@ -2,6 +2,10 @@
   --bg: #0f1420;
   --panel: #171d2c;
   --border: #2a3348;
+  /* 팝업·모달 전용 강한 경계선 — _layout.html 이 관리자가 고른 배경에서
+     파생한 값으로 덮어쓴다(core/settings.py::derive_theme). 로그인 화면
+     처럼 _layout.html 을 안 거치는 화면을 위한 기본값만 여기 둔다. */
+  --border-strong: #4a5570;
   --text: #e7ecf5;
   --muted: #93a0bb;
   --accent: #4f8cff;
@@ -103,98 +107,176 @@ main { padding: 24px 32px 48px; }
 
 .status-line { color: var(--muted); font-size: 0.85rem; margin-top: 12px; }
 
+/* 도로 노면 관리 탭(Phase 1: mock 데이터) 경고 배너 -- docs/road_surface_management_plan.md 참고 */
+.mock-hint { background: #3a2a12; border: 1px solid #b5651d; color: #f0b37e; border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; }
+
+/* 인파관리 -- 소스 전환 UI (임시데이터 <-> 현장장비). 런타임 전환이므로
+   재시작하면 configs/blocks.json 값으로 돌아간다는 안내를 함께 표시한다. */
+.src-switch { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 10px 0; background: rgba(255,255,255,0.02); }
+.src-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; flex-wrap: wrap; }
+.src-label { min-width: 76px; font-size: 12px; color: var(--muted); }
+.srcbtn { background: var(--border); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; }
+.srcbtn:hover { border-color: var(--accent); }
+.srcbtn.on { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+.src-note { font-size: 11.5px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+.src-err { color: #f0b37e; font-weight: 600; }
+
+/* 도로 노면 -- AI 탐지 실행 패널 (기존 영상 / 실시간 CCTV 선택) */
+.road-analysis { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+.road-select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 12px; min-width: 260px; max-width: 420px; }
+.road-analysis .src-note code, .road-analysis .mock-hint code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-family: "Consolas", ui-monospace, monospace; font-size: 11px; }
+
+/* 인파관리 -- 실시간 위험행동 탐지 패널 (배회·침입 + 군중지표) */
+.crowd-live { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+.crowd-live-head { display: flex; align-items: center; gap: 10px; margin: 10px 0 6px; flex-wrap: wrap; }
+.crowd-live-head .ctitle { font-weight: 700; font-size: 15px; }
+.crowd-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px 14px; font-size: 12px; color: var(--muted); margin: 10px 0; }
+.crowd-metrics b { color: var(--text); font-size: 15px; }
+.crowd-metrics .mk { display: block; font-size: 11px; }
+/* 판정 근거 — 왜 그 등급인지. 값 옆에 붙어야 대조하며 읽는다. */
+.crowd-drivers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 10px; font-size: 12px; color: var(--muted); }
+.crowd-drivers .mk { font-size: 11px; margin-right: 2px; }
+.crowd-drivers .drv { display: inline-block; padding: 2px 8px; border-radius: 10px; background: rgba(210,153,34,.16); color: #d29922; font-size: 11px; white-space: nowrap; }
+/* 평소 대비 지금. 「15명」이 많은지 적은지는 기준선이 있어야 안다. */
+.crowd-baseline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+.crowd-baseline .mk { font-size: 11px; }
+.crowd-baseline b { color: var(--text); font-size: 14px; }
+.crowd-baseline b.hi { color: #e5484d; }   /* 평소보다 많다 */
+.crowd-baseline b.lo { color: #3fb950; }   /* 평소보다 적다 */
+.crowd-baseline .bl-sub { font-size: 11px; }
+.crowd-live .ohdr { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin: 12px 0 4px; }
+.crowd-live .muted { color: var(--muted); font-size: 12px; }
+.crowd-sec-title { font-size: 1rem; color: var(--muted); margin: 8px 0 12px; font-weight: 600; }
+/* 관측 스냅샷 -- 원본 해상도가 커서 그대로 두면 패널을 뚫고 나간다. */
+.crowd-snap { display: block; width: 100%; max-width: 640px; height: auto; border: 1px solid var(--border); border-radius: 6px; margin-top: 4px; }
+
+/* 도로 노면 관리 -- 실시간 CCTV 진입 버튼. 헤딩에 인라인으로 끼워 넣으면 눈에
+   잘 안 띈다는 피드백이 있어, 눈에 띄는 별도 줄로 분리했다. */
+.road-live-bar { margin: 10px 0 16px; }
+.livebtn-lg { display: inline-block; padding: 8px 16px; font-size: 14px; font-weight: 600; }
+.alert-row-action { border-left: 3px solid var(--red); padding-left: 8px; background: rgba(229, 72, 77, 0.08); }
+.road-action-row { padding: 4px 0 10px; }
+
 /* ============================================================
-   "도로위험 블록" 탭 -- flood3의 원본 대시보드(service/static/styles.css)를
-   그대로 이식. #tab-flood 안에서만 적용되도록 스코프를 줬다(다른 탭의
-   .card/.metrics 등과 이름이 겹쳐도 서로 영향을 주지 않게 하기 위함).
+   상황판 카드 탭(교통위험 · 침수) -- flood3의 원본 대시보드
+   (service/static/styles.css)를 그대로 이식. `.ug-board` 안에서만
+   적용되도록 스코프를 줬다(다른 탭의 .card/.metrics 등과 이름이 겹쳐도
+   서로 영향을 주지 않게 하기 위함).
+
+   ★ 2026-08-21: 스코프가 원래 `#tab-flood` 였는데, 침수·교통 도메인을
+   나누며 탭이 둘(`#tab-traffic`·`#tab-flood`)이 됐다. id 를 둘 나열하는
+   대신 **두 섹션이 함께 다는 클래스**로 바꿨다 — 앞으로 상황판 성격의
+   탭이 늘어도 클래스만 달면 된다.
+
    모달(livemodal/reportmodal)은 탭 밖(본문 형제 요소)에 있으므로 그 안의
    규칙은 스코프 없이 전역으로 둔다.
    ============================================================ */
-#tab-flood .flood3-status { font-size: 13px; color: #8b949e; display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
-#tab-flood .dot { width: 9px; height: 9px; border-radius: 50%; background: #3fb950; box-shadow: 0 0 8px #3fb950; }
-#tab-flood .bmock { color: #e8843b; font-weight: 600; }
-#tab-flood .breal { color: #3fb950; font-weight: 600; }
+/* ★ 2026-08-27 — 이 구역(.ug-board 상황판)은 flood3 원본을 그대로 옮겨온
+   뒤로 줄곧 GitHub Dark 팔레트(#8b949e·#161b22·#30363d·#21262d·#e6edf3
+   등)를 하드코딩해 왔다. 관리자가 화면 배경을 바꿔도(S-85) 이 구역만
+   항상 어둡게 남았고, 특히 배경이 밝은 색일 때 **박스는 여전히 어두운데
+   그 안 글자는 var(--text)/var(--muted)로 이미 어둡게 뒤집힌 채였다면
+   글자가 안 보이는 조합**이 나올 수 있었다(신고 계기). 구조적인 색은
+   전부 테마 변수로 바꾸고, 등급·추세처럼 **의미가 있는 색**(빨강=심각·
+   주황=경고·초록=양호·파랑=정보)만 고정값으로 남긴다 — 이런 색은
+   밝든 어둡든 그 자체로 뜻이 통해야 하고 대비도 충분하다. */
+.ug-board .flood3-status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
+.ug-board .dot { width: 9px; height: 9px; border-radius: 50%; background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+.ug-board .bmock { color: #e8843b; font-weight: 600; }
+.ug-board .breal { color: #3fb950; font-weight: 600; }
 
-#tab-flood .rainbar { border: 1px solid #30363d; border-radius: 10px; background: #161b22; padding: 12px 14px; margin-bottom: 14px; }
-#tab-flood .rainbar.heavy { border-color: #e5484d; background: #2a1417; }
-#tab-flood .rainbar .rtitle { font-weight: 600; font-size: 14px; }
-#tab-flood .rainbar.heavy .rtitle { color: #ff7b72; }
-#tab-flood .rainbar .rsub { margin-top: 6px; font-size: 13px; color: #e8843b; font-weight: 600; }
-#tab-flood .rainbar .plan { margin: 6px 0 0; padding-left: 20px; font-size: 12.5px; color: #c9d1d9; line-height: 1.65; }
-#tab-flood .rainbar .note { margin-top: 8px; font-size: 11.5px; color: #8b949e; }
-#tab-flood .srcwarn { background: #3a2a12; border: 1px solid #b5651d; color: #f0b37e; border-radius: 6px; padding: 7px 10px; font-size: 12.5px; margin-bottom: 8px; }
-#tab-flood .srcok { color: #3fb950; font-size: 12px; margin-bottom: 8px; }
-#tab-flood .judge { margin-top: 8px; font-size: 11.5px; color: #8b949e; border-top: 1px solid #21262d; padding-top: 7px; }
+.ug-board .rainbar { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 12px 14px; margin-bottom: 14px; }
+.ug-board .rainbar.heavy { border-color: #e5484d; background: rgba(229, 72, 77, .12); }
+.ug-board .rainbar .rtitle { font-weight: 600; font-size: 14px; }
+.ug-board .rainbar.heavy .rtitle { color: #ff7b72; }
+.ug-board .rainbar .rsub { margin-top: 6px; font-size: 13px; color: #e8843b; font-weight: 600; }
+.ug-board .rainbar .plan { margin: 6px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--text); line-height: 1.65; }
+.ug-board .rainbar .note { margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+.ug-board .srcwarn { background: rgba(240, 179, 126, .16); border: 1px solid #b5651d; color: #f0b37e; border-radius: 6px; padding: 7px 10px; font-size: 12.5px; margin-bottom: 8px; }
+.ug-board .srcok { color: #3fb950; font-size: 12px; margin-bottom: 8px; }
+.ug-board .judge { margin-top: 8px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 7px; }
 
-#tab-flood .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-@media (max-width: 900px) { #tab-flood .grid { grid-template-columns: 1fr; } }
-#tab-flood .card { border: 1px solid #30363d; border-radius: 10px; background: #161b22; padding: 12px 14px; }
-#tab-flood .card.heavy { border-color: #e8843b; }
-#tab-flood .chead { display: flex; justify-content: space-between; align-items: center; }
-#tab-flood .chead .name { font-weight: 700; font-size: 15px; }
-#tab-flood .chip { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 20px; color: #0d1117; }
-#tab-flood .card .risk { font-size: 12.5px; color: #c9d1d9; margin: 6px 0; line-height: 1.4; }
-#tab-flood .tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #21262d; color: #8b949e; }
-#tab-flood .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; font-size: 12px; color: #8b949e; margin: 8px 0; }
-#tab-flood .metrics b { color: #e6edf3; font-size: 14px; }
-#tab-flood .metrics .mk { display: block; font-size: 11px; }
-#tab-flood .trend { color: #e8843b; font-weight: 600; }
-#tab-flood .ohdr { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: .4px; margin: 8px 0 4px; }
-#tab-flood .objs { display: flex; flex-direction: column; gap: 3px; max-height: 184px; overflow-y: auto; }
-#tab-flood .obj { display: grid; grid-template-columns: 54px 60px 1fr 40px; align-items: center; gap: 6px; font-size: 12px; }
-#tab-flood .obj .oid { color: #c9d1d9; }
-#tab-flood .obj .ospd { color: #8b949e; text-align: right; }
-#tab-flood .obj .obar { height: 7px; background: #21262d; border-radius: 4px; overflow: hidden; }
-#tab-flood .obj .obar > span { display: block; height: 100%; }
-#tab-flood .obj .odrop { color: #8b949e; text-align: right; }
-#tab-flood .rec { background: #1c2330; border-left: 3px solid #58a6ff; padding: 7px 10px; border-radius: 5px; font-size: 12.5px; margin-top: 10px; }
-#tab-flood .muted { color: #8b949e; }
-#tab-flood .chead-r { display: flex; align-items: center; gap: 8px; }
-#tab-flood .repbtn { background: #2d333b; color: #e6edf3; border: 1px solid #444c56; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
-#tab-flood .repbtn:hover { background: #373e47; }
+.ug-board .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+@media (max-width: 900px) { .ug-board .grid { grid-template-columns: 1fr; } }
+.ug-board .card { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 12px 14px; }
+.ug-board .card.heavy { border-color: #e8843b; }
+.ug-board .chead { display: flex; justify-content: space-between; align-items: center; }
+.ug-board .chead .name { font-weight: 700; font-size: 15px; }
+/* .chip/.gauge-grade 는 등급별 밝은 색(초록·노랑·주황·빨강 등)을 자바스크립트가
+   인라인으로 얹는다 — 배경이 항상 밝은 채도색이라 글자는 **페이지 테마와
+   무관하게 항상 짙은색**이어야 어떤 등급 색 위에서도 읽힌다. 그래서 var(--text)
+   대신 고정 검정에 가까운 값을 그대로 둔다(의도적으로 테마를 안 따름). */
+.ug-board .chip { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 20px; color: #0d1117; }
+.ug-board .card .risk { font-size: 12.5px; color: var(--text); margin: 6px 0; line-height: 1.4; }
+.ug-board .tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--border); color: var(--muted); }
+.ug-board .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; font-size: 12px; color: var(--muted); margin: 8px 0; }
+.ug-board .metrics b { color: var(--text); font-size: 14px; }
+.ug-board .metrics .mk { display: block; font-size: 11px; }
+.ug-board .trend { color: #e8843b; font-weight: 600; }
+.ug-board .ohdr { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin: 8px 0 4px; }
+.ug-board .objs { display: flex; flex-direction: column; gap: 3px; max-height: 184px; overflow-y: auto; }
+.ug-board .obj { display: grid; grid-template-columns: 54px 60px 1fr 40px; align-items: center; gap: 6px; font-size: 12px; }
+.ug-board .obj .oid { color: var(--text); }
+.ug-board .obj .ospd { color: var(--muted); text-align: right; }
+.ug-board .obj .obar { height: 7px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.ug-board .obj .obar > span { display: block; height: 100%; }
+.ug-board .obj .odrop { color: var(--muted); text-align: right; }
+/* 이전엔 고정 남색(#1c2330) 배경 위에 상속받은 글자색을 그대로 뒀다 —
+   배경이 밝은 테마에서 글자도 밝게 뒤집히면 밝은 배경 위에 옅은 글자가
+   남아 안 보였다(신고 계기). rgba 틴트로 바꿔 어떤 테마 위에서도 그
+   위에 얹힌 var(--text)/var(--panel) 조합이 그대로 유지되게 한다. */
+.ug-board .rec { background: rgba(88, 166, 255, .10); border-left: 3px solid #58a6ff; padding: 7px 10px; border-radius: 5px; font-size: 12.5px; margin-top: 10px; }
+.ug-board .muted { color: var(--muted); }
+.ug-board .chead-r { display: flex; align-items: center; gap: 8px; }
+.ug-board .repbtn { background: var(--border); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
+.ug-board .repbtn:hover { filter: brightness(1.15); }
 
-#tab-flood .tlhead { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #8b949e; margin: 0 2px 6px; }
-#tab-flood .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 3px 0 9px; vertical-align: middle; }
-#tab-flood .timelines { border: 1px solid #30363d; border-radius: 10px; background: #161b22; padding: 10px 12px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 7px; }
-#tab-flood .tl { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; }
-#tab-flood .tlname { font-size: 12px; color: #c9d1d9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#tab-flood .tlbars { display: flex; height: 18px; border-radius: 3px; overflow: hidden; background: #21262d; }
-#tab-flood .tlbars > span { flex: 1 1 auto; min-width: 1px; }
+.ug-board .tlhead { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin: 0 2px 6px; }
+.ug-board .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 3px 0 9px; vertical-align: middle; }
+.ug-board .timelines { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 10px 12px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 7px; }
+.ug-board .tl { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; }
+.ug-board .tlname { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ug-board .tlbars { display: flex; height: 18px; border-radius: 3px; overflow: hidden; background: var(--border); }
+.ug-board .tlbars > span { flex: 1 1 auto; min-width: 1px; }
 
-#tab-flood .flood { margin-top: 10px; padding-top: 10px; border-top: 1px solid #21262d; }
-#tab-flood .flood-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-#tab-flood .flood-head .ftitle { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: .4px; }
-#tab-flood .gauge { display: flex; align-items: center; gap: 10px; }
-#tab-flood .gauge-score { font-size: 22px; font-weight: 800; }
-#tab-flood .gauge-grade { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 20px; color: #0d1117; }
-#tab-flood .gauge-bar { flex: 1; height: 8px; background: #21262d; border-radius: 5px; overflow: hidden; }
-#tab-flood .gauge-bar > span { display: block; height: 100%; border-radius: 5px; }
-#tab-flood .flood-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 10px; font-size: 12px; color: #8b949e; margin: 8px 0 4px; }
-#tab-flood .flood-metrics b { color: #e6edf3; }
-#tab-flood .flood-reason { font-size: 12px; color: #c9d1d9; margin-top: 4px; }
-#tab-flood .flood-pred { font-size: 11.5px; color: #8b949e; margin-top: 6px; border-top: 1px dashed #21262d; padding-top: 6px; }
-#tab-flood .flood-pred b { color: #e6edf3; }
-#tab-flood .flood-noroi { color: #e8843b; }
-#tab-flood .flood-na { font-size: 12px; color: #8b949e; }
-#tab-flood .trend-surge, #tab-flood .trend-rising { color: #e5484d; font-weight: 700; }
-#tab-flood .trend-falling { color: #3fb950; font-weight: 700; }
-#tab-flood .trend-stable { color: #8b949e; }
+.ug-board .flood { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.ug-board .flood-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.ug-board .flood-head .ftitle { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.ug-board .gauge { display: flex; align-items: center; gap: 10px; }
+.ug-board .gauge-score { font-size: 22px; font-weight: 800; }
+.ug-board .gauge-grade { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 20px; color: #0d1117; } /* .chip 과 같은 이유로 고정 */
+.ug-board .gauge-bar { flex: 1; height: 8px; background: var(--border); border-radius: 5px; overflow: hidden; }
+.ug-board .gauge-bar > span { display: block; height: 100%; border-radius: 5px; }
+.ug-board .flood-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 10px; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+.ug-board .flood-metrics b { color: var(--text); }
+.ug-board .flood-reason { font-size: 12px; color: var(--text); margin-top: 4px; }
+.ug-board .flood-pred { font-size: 11.5px; color: var(--muted); margin-top: 6px; border-top: 1px dashed var(--border); padding-top: 6px; }
+.ug-board .flood-pred b { color: var(--text); }
+.ug-board .flood-noroi { color: #e8843b; }
+.ug-board .flood-na { font-size: 12px; color: var(--muted); }
+.ug-board .trend-surge, .ug-board .trend-rising { color: #e5484d; font-weight: 700; }
+.ug-board .trend-falling { color: #3fb950; font-weight: 700; }
+.ug-board .trend-stable { color: var(--muted); }
 
 /* ── 모달(실시간 CCTV / 사건 브리핑) -- 탭 밖, 페이지 전역 ── */
-.livebtn { background: #1f6feb; color: #fff; border: 0; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
-.livebtn:hover { background: #388bfd; }
-.reportmd { white-space: pre-wrap; word-break: break-word; font-family: "Consolas", "D2Coding", ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; color: #e6edf3; background: #0b0e13; border: 1px solid #21262d; border-radius: 8px; padding: 12px 14px; max-height: 68vh; overflow-y: auto; margin: 6px 0 0; }
+.livebtn { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
+.livebtn:hover { filter: brightness(1.15); }
+.reportmd { white-space: pre-wrap; word-break: break-word; font-family: "Consolas", "D2Coding", ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; max-height: 68vh; overflow-y: auto; margin: 6px 0 0; }
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .modal.hidden { display: none; }
-.modalbox { background: #0d1117; border: 1px solid #30363d; border-radius: 10px; padding: 12px; width: min(820px, 92vw); }
+/* 2026-08-27 — 팝오버(.ug-popover-panel)와 같은 원칙: 화면 위로 뜨는
+   상자는 배경색이 무엇이든 확실히 갈라져 보여야 한다 — --border-strong +
+   그림자. 이 모달들은 뒤에 어두운 스크림(위 .modal 배경)이 이미 깔려
+   있어 원래도 덜 급했지만, 일관성을 위해 같은 규칙을 적용한다. */
+.modalbox { background: var(--panel); border: 1.5px solid var(--border-strong); box-shadow: 0 10px 32px rgba(0,0,0,.4); border-radius: 10px; padding: 12px; width: min(820px, 92vw); }
 .modalhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 600; }
-.modalhead button { background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.modalhead button { background: var(--border); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
 .liveerr { color: #e5484d; font-size: 12px; margin-top: 6px; min-height: 14px; }
-.srcline { font-size: 11px; color: #8b949e; margin-top: 6px; }
+.srcline { font-size: 11px; color: var(--muted); margin-top: 6px; }
 .src-mock { color: #e8843b; font-weight: 600; }
 .src-real { color: #3fb950; font-weight: 600; }
 .livectrl { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 13px; flex-wrap: wrap; }
-.livectrl input { background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 5px; padding: 3px; width: 52px; }
+.livectrl input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px; width: 52px; }
 .recstat { color: #d4a017; font-size: 12px; }
 
 /* ── 실시간 CCTV 비디오 위 ROI 오버레이 -- flood3 원본에는 없던 추가 기능.
@@ -203,7 +285,151 @@ main { padding: 24px 32px 48px; }
 .video-wrap { position: relative; }
 #livevideo { width: 100%; max-height: 70vh; background: #000; border-radius: 6px; display: block; }
 .roi-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.roi-legend { display: flex; gap: 14px; align-items: center; font-size: 11.5px; color: #8b949e; margin-top: 6px; flex-wrap: wrap; }
+.roi-legend { display: flex; gap: 14px; align-items: center; font-size: 11.5px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
 .roi-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
 .roi-note { color: #e8843b; line-height: 1.6; }
-.roi-note code { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 2px 6px; color: #e6edf3; font-family: "Consolas", "D2Coding", ui-monospace, monospace; }
+.roi-note code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; color: var(--text); font-family: "Consolas", "D2Coding", ui-monospace, monospace; }
+
+/* ── S-44 도로 노면 실시간 관제 ───────────────────────────────────────────
+   상시 순회는 지점당 15분 주기다. 화면에 뜬 등급이 방금 것인지 15분 전
+   것인지 구분되지 않으면 결빙·낙하물 대응을 그르치므로, **경과 시간과
+   갱신 지연**을 색으로 드러낸다.
+
+   반응형: 지점 그리드는 auto-fill 로 접히고, 집중 감시 패널은 좁은 화면에서
+   영상↔지표가 세로로 쌓인다(관제실 대형 모니터와 현장 태블릿 모두 대상). */
+.road-live { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+.road-live .rl-sub { font-size: 11.5px; color: var(--muted); }
+.rl-metrics { border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.rl-warn { color: #e8843b; }
+.rl-bad { color: #e5484d; }
+
+.rl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 14px; }
+/* ★ 이전엔 고정 #0d1117 배경 위에 var(--text)/var(--muted)로 이미 테마를
+   따르는 글자가 얹혀 있었다 — 배경만 계속 고정으로 어두운 채 글자는
+   테마를 따라 밝기가 바뀌니, 밝은 테마에서 두 조합이 어긋날 수 있었다
+   (신고 계기). */
+.rl-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg); padding: 11px 12px; }
+/* 집중 감시 중인 지점과 갱신이 밀린 지점은 목록에서 바로 눈에 띄어야 한다. */
+.rl-card--focus { border-color: #58a6ff; box-shadow: 0 0 0 1px rgba(88, 166, 255, .25); }
+.rl-card--stale { border-color: #e8843b; }
+.rl-card-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.rl-card-head b { font-size: 13.5px; margin-right: 2px; }
+.rl-card .row { font-size: 12px; margin: 3px 0; line-height: 1.5; }
+.rl-card .row.muted { color: var(--muted); }
+.rl-age { font-size: 11.5px; color: var(--muted); }
+.rl-nostream { font-size: 11.5px; color: var(--muted); align-self: center; }
+.rl-card-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
+
+.rl-focus { border: 1px solid #58a6ff; border-radius: 8px; padding: 12px; margin-top: 12px; background: rgba(88, 166, 255, .05); }
+.rl-focus-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.rl-focus-body { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; }
+.rl-focus-video video { width: 100%; background: #000; border-radius: 6px; display: block; max-height: 46vh; }
+.rl-focus-info .crowd-metrics { margin-top: 0; }
+
+/* 최근 관측 추이 -- 막대 하나가 관측 1회. 눈금 없이 추세만 본다. */
+.rl-spark { margin-top: 10px; font-size: 11px; color: var(--muted); }
+.rl-spark-bars { display: flex; align-items: flex-end; gap: 3px; height: 34px; margin-top: 5px; }
+.rl-spark-bars i { flex: 1 1 0; min-width: 4px; border-radius: 2px 2px 0 0; }
+
+@media (max-width: 820px) {
+  .rl-focus-body { grid-template-columns: 1fr; }
+  .rl-focus-video video { max-height: 38vh; }
+}
+@media (max-width: 520px) {
+  .rl-grid { grid-template-columns: 1fr; }
+  .road-live { padding: 12px; }
+}
+
+/* 학습 데이터 자동 수집 (Phase 3) — 기본은 꺼짐이라 평소엔 조용한 회색이고,
+   켜져 있을 때만 초록 테두리로 「지금 저장 중」임을 드러낸다. 도로 영상을
+   디스크에 쌓는 상태가 눈에 띄지 않으면 켠 것을 잊는다. */
+.rl-collect { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 12px; }
+.rl-collect--on { border-color: #3fb950; background: rgba(63, 185, 80, .05); }
+.rl-collect-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rl-collect .crowd-metrics { margin: 10px 0 6px; }
+.rl-collect code { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-family: "Consolas", ui-monospace, monospace; font-size: 11px; word-break: break-all; }
+.rl-bar { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 4px 0 8px; }
+.rl-bar i { display: block; height: 100%; background: #3fb950; }
+
+/* 순회 진행 표시 — 한 바퀴에 「대상 수 × 15초」가 걸린다. 지금 어디를 보고
+   있는지가 안 보이면 15분 동안 화면이 그대로여서 멈춘 줄 안다. */
+.rl-progress { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 10px; font-size: 12.5px; }
+.rl-now { display: inline-flex; align-items: center; gap: 7px; color: var(--text); }
+.rl-now b { color: #58a6ff; font-variant-numeric: tabular-nums; }
+.rl-dot { width: 8px; height: 8px; border-radius: 50%; background: #58a6ff; flex: none; animation: rl-pulse 1.4s ease-in-out infinite; }
+.rl-card--now { border-color: #58a6ff; }
+.rl-blink { animation: rl-pulse 1.4s ease-in-out infinite; }
+@keyframes rl-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* 애니메이션을 줄여 달라는 설정을 존중한다(관제실 장시간 근무 · 접근성 9절). */
+@media (prefers-reduced-motion: reduce) {
+  .rl-dot, .rl-blink { animation: none; }
+}
+
+/* 학습 영상 업로드 — 파일 선택이 10초 폴링에 지워지지 않도록 별도 영역이다. */
+.rl-file { font-size: 12px; color: var(--text); max-width: 100%; }
+.rl-file::file-selector-button { background: var(--border); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; margin-right: 8px; cursor: pointer; font-size: 12px; }
+.rl-file::file-selector-button:hover { border-color: var(--accent); }
+.rl-label { min-width: 220px; flex: 1 1 220px; }
+.rl-narrow { min-width: 0; width: auto; }
+.rl-ok { color: #3fb950; }
+.rl-ok code, .src-err code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-family: "Consolas", ui-monospace, monospace; font-size: 11px; word-break: break-all; }
+@media (max-width: 640px) {
+  .rl-label { min-width: 0; }
+  #road-train .src-row { align-items: flex-start; }
+}
+
+/* 지점 카드 안의 추이 막대 — 좁은 카드에 들어가야 해서 낮게 잡는다. */
+.rl-spark--sm { margin-top: 7px; }
+.rl-spark--sm .rl-spark-bars { height: 20px; gap: 2px; }
+
+/* 지점별 관측 이력 표 (S-44) — 「지금 상태」만으로는 나빠지고 있는지 알 수 없다. */
+.rl-card { cursor: pointer; }
+.rl-card--picked { border-color: #a371f7; box-shadow: 0 0 0 1px rgba(163, 113, 247, .3); }
+.rl-table-wrap { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+.rl-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rl-table th, .rl-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+/* 표가 길어 스크롤될 때 머리글이 남아 있어야 어느 열인지 알 수 있다. */
+.rl-table thead th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; font-size: 11.5px; z-index: 1; }
+.rl-table tbody tr:hover { background: rgba(255, 255, 255, .03); }
+.rl-table .rl-num { text-align: right; font-variant-numeric: tabular-nums; }
+.hidden { display: none; }
+
+/* ── 도메인 화면을 공통 셸(_layout.html) 안에 넣으면서 생긴 보정 ───────────
+   flood3 원본 CSS 는 전체 화면 폭을 전제로 좌우 32px 여백을 갖고 있었다.
+   이제 `.ug-main` 이 이미 여백을 주므로 안쪽에서 또 주면 이중이 된다.
+   셸 안에 있을 때만 걷어낸다 — 셸 밖 사용은 남겨 둔다. */
+.ug-main .tabs { padding-left: 0; padding-right: 0; }
+.ug-main .ug-tabwrap { padding: 20px 0 0; }
+.ug-page-title { color: var(--muted); font-size: .92rem; margin: 0 0 10px; }
+
+/* 탭이 좁은 화면에서 넘칠 때는 가로로 훑을 수 있어야 한다 — 줄바꿈되면
+   탭처럼 보이지 않는다. */
+.ug-main .tabs { overflow-x: auto; scrollbar-width: thin; }
+.ug-main .tab-btn { white-space: nowrap; flex: none; }
+
+/* 노면 누적 탐지율 (2026-08-19 전수조사).
+   ⚠️ 「거의 못 찾는 중」은 눈에 띄어야 한다 — 조용히 적어 두면 아무도 안 읽고,
+   탐지 0건을 「손상 없음」으로 읽는다. */
+.rl-stats { margin: 10px 0; padding: 10px 12px; border-radius: 8px;
+            border: 1px solid var(--border); font-size: .85rem; }
+.rl-stats--bad { border-color: rgba(229,72,77,.5);
+                 background: rgba(229,72,77,.10); color: #f0a3a5; }
+.rl-stats-note { margin-top: 6px; font-size: .82rem; line-height: 1.5; }
+
+/* 증거 자료 도메인 배지 (S-88).
+   ★ 도메인은 수집 때부터 저장돼 있었는데 화면에 없었다. 색으로 갈라 두면
+   목록을 훑을 때 「이건 침수, 저건 인파」가 한눈에 들어온다. */
+.ev-dom { font-weight: 700; }
+.ev-dom--flood   { background: rgba(88,166,255,.18); color: #79b8ff; }
+.ev-dom--traffic { background: rgba(210,153,255,.18); color: #d2a8ff; }
+.ev-dom--crowd   { background: rgba(210,153,34,.18);  color: #e3b341; }
+.ev-dom--road    { background: rgba(63,185,80,.18);   color: #7ee787; }
+.ev-dom--none    { background: rgba(127,127,127,.18); color: var(--muted); }
+
+/* 증거 팝업 — 실제 탐지 상자 (S-88, 2026-08-20).
+   ROI(면·색 채움)와는 다른 스타일로 그린다 — 「구역」과 「실제 상자」를
+   눈으로도 헷갈리지 않게 하기 위해서다. */
+.ev-box-rect { fill: none; stroke: #ff6b6b; stroke-width: 3; }
+.ev-box-label { fill: #ff6b6b; font-size: 14px; font-weight: 700;
+                paint-order: stroke; stroke: #000; stroke-width: 3px; }

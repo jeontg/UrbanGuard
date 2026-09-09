@@ -1,0 +1,165 @@
+{% extends "_layout.html" %}
+{% block title %}통계·성과 리포트 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>통계·성과 리포트 <span style="font-size:.8rem;color:var(--muted);
+      font-weight:400">S-60</span></h2>
+  <p>{{ s.period_label }} ({{ s.since.strftime("%Y-%m-%d") }} 이후) 집계입니다.</p>
+</div>
+
+<div class="ug-card" style="margin-bottom:16px">
+  <form method="get" action="/analytics"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:180px;flex:0 1 220px">
+      <label for="f-period">기간</label>
+      <select id="f-period" name="period" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        {% for v, l in periods %}
+        <option value="{{ v }}" {% if sel_period == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+    <a class="ug-btn ug-btn--ghost" href="/analytics/export?period={{ sel_period }}"
+       style="text-decoration:none;padding:11px 18px">CSV 내보내기</a>
+  </form>
+</div>
+
+<div class="ug-cards" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+     margin-bottom:16px">
+  {% for label, value, unit, color in [
+      ("총 탐지", s.total, "건", "var(--text)"),
+      ("조치 완료율", s.close_rate, "%", "#3fb950"),
+      ("진행 중", s.open, "건", "#e8843b"),
+      ("오탐률", s.false_positive_rate, "%", "#e5484d"),
+      ("통보 발송", s.notify_sent, "건", "var(--accent)")] %}
+  <section class="ug-card">
+    <p class="ug-stat" style="color:{{ color }}">{{ value }}<span
+       style="font-size:.9rem;font-weight:600">{{ unit }}</span></p>
+    <p class="ug-stat-label">{{ label }}</p>
+  </section>
+  {% endfor %}
+</div>
+
+<div class="ug-cards" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);
+     margin-bottom:16px">
+  <section class="ug-card">
+    <h3>일자별 탐지 추이</h3>
+    {% if daily %}
+    <div style="display:flex;align-items:flex-end;gap:2px;height:150px;
+                border-bottom:1px solid var(--border);padding-bottom:2px">
+      {% for d in daily %}
+      <div title="{{ d.date }} · {{ d.count }}건"
+           style="flex:1 1 0;min-width:2px;
+                  height:{{ (d.count / peak * 100) if peak else 0 }}%;
+                  background:{% if d.count %}var(--accent){% else %}var(--border){% endif %};
+                  border-radius:2px 2px 0 0;min-height:2px"></div>
+      {% endfor %}
+    </div>
+    <p class="ug-note" style="margin-top:6px">
+      {{ daily[0].date }} ~ {{ daily[-1].date }} · 최대 {{ peak }}건/일
+      {% if sel_period == '365d' %}(1년 조회 시 최근 60일만 표시){% endif %}</p>
+    {% else %}
+    <p class="ug-empty">집계할 데이터가 없습니다.</p>
+    {% endif %}
+  </section>
+
+  <section class="ug-card">
+    <h3>대응 소요시간</h3>
+    {% if s.ack_avg_min is not none %}
+    <p class="ug-stat" style="color:var(--accent)">{{ s.ack_avg_min }}<span
+       style="font-size:.9rem;font-weight:600">분</span></p>
+    <p class="ug-stat-label">평균 (탐지 → 첫 확인)</p>
+    <hr style="border:0;border-top:1px solid var(--border);margin:14px 0">
+    <p style="margin:0;font-size:.9rem">최대 {{ s.ack_max_min }}분 ·
+      집계 대상 {{ s.ack_count }}건</p>
+    {% else %}
+    <p class="ug-empty">확인 처리된 이벤트가 없어 산출할 수 없습니다.</p>
+    {% endif %}
+    <p class="ug-note">종결까지가 아니라 <b>첫 확인까지</b>로 잽니다. 종결로 재면
+      야간에 다음 조로 넘어간 건이 통계를 왜곡합니다.</p>
+  </section>
+</div>
+
+<div class="ug-cards" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+  <section class="ug-card">
+    <h3>도메인별</h3>
+    <div class="ug-tablewrap">
+      <table class="ug-table" style="min-width:0">
+        <thead><tr><th>도메인</th><th>건수</th><th>비중</th></tr></thead>
+        <tbody>
+        {% for d in s.by_domain %}
+        <tr><td>{{ d.label }}</td><td>{{ d.count }}</td>
+            <td>{{ (d.count / s.total * 100)|round(1) if s.total else 0 }}%</td></tr>
+        {% else %}
+        <tr><td colspan="3" class="ug-empty">데이터 없음</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="ug-card">
+    <h3>최고 등급별</h3>
+    <div class="ug-tablewrap">
+      <table class="ug-table" style="min-width:0">
+        <thead><tr><th>등급</th><th>건수</th><th>비중</th></tr></thead>
+        <tbody>
+        {% for lv in s.by_level %}
+        <tr><td>{{ lv.level }}</td><td>{{ lv.count }}</td>
+            <td>{{ (lv.count / s.total * 100)|round(1) if s.total else 0 }}%</td></tr>
+        {% else %}
+        <tr><td colspan="3" class="ug-empty">데이터 없음</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="ug-note">등급이 내려간 건도 <b>최고 등급 기준</b>으로 셉니다.</p>
+  </section>
+</div>
+
+<div class="ug-card" style="margin-top:16px">
+  <h3>위험유형별 오탐률</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table" style="min-width:0">
+      <thead><tr><th>도메인</th><th>위험유형</th><th>정탐</th><th>오탐</th>
+        <th>판정 건수</th><th>오탐률</th></tr></thead>
+      <tbody>
+      {% for q in quality %}
+      <tr>
+        <td>{{ q.domain_label }}</td>
+        <td>{{ q.label }}</td>
+        <td>{{ q.true }}</td>
+        <td>{{ q['false'] }}</td>
+        <td>{{ q.judged }}</td>
+        <td>
+          {% if q.low_sample %}
+          <span title="{{ quality_min_sample }}건 미만은 비율이 아니라 표본 수만 봅니다">
+            표본 {{ q.judged }}건 [자체]</span>
+          {% elif q.false_rate is not none %}
+          {{ q.false_rate }}%
+          {% else %}
+          —
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="ug-empty">이 기간에 판정된 건이 없습니다.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="ug-note" style="margin-top:8px">
+    ⚠ 이 표는 <b>관제요원이 판정한 건</b>만 셉니다. 재현율(미탐률)은 「사람이
+    알아챈 미탐」만 알 수 있어 <b>여기서 산출하지 않습니다.</b>
+    표본이 {{ quality_min_sample }}건 미만인 유형은 오탐률 대신 표본 수만
+    보입니다 — 적은 표본의 0%를 "오탐 없음"으로 읽으면 안 되기 때문입니다.
+  </p>
+</div>
+
+<p class="ug-note" style="margin-top:14px">
+  ⚠ 오탐률은 관제요원이 <b>신고한 건수 기준</b>입니다. 신고가 적으면 오탐이
+  적은 것이 아니라 아직 확인되지 않은 것일 수 있습니다.
+</p>
+{% endblock %}

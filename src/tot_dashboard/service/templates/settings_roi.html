@@ -1,0 +1,226 @@
+{% extends "_layout.html" %}
+{% block title %}ROI 설정 — {{ block.name }}{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <p style="margin:0 0 6px"><a href="/settings/blocks" style="color:var(--accent);
+     text-decoration:none;font-size:.86rem;font-weight:700">← 감시지점 관리</a></p>
+  <h2>ROI 설정 — {{ block.name }}
+    <span style="font-size:.8rem;color:var(--muted);font-weight:400">S-81</span></h2>
+  <p>정지영상 위에 영역을 그립니다. 좌표는 원본 해상도 기준으로 저장됩니다.</p>
+</div>
+
+<div id="ug-msg"></div>
+
+<div class="ug-cards" style="grid-template-columns:minmax(0,2.2fr) minmax(0,1fr)">
+  <section class="ug-card">
+    <h3>정지영상</h3>
+    {% if snapshot %}
+    <div id="roi-stage" style="position:relative;display:inline-block;max-width:100%;
+         border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <img id="roi-img" alt="{{ block.name }} 정지영상" style="display:block;max-width:100%;height:auto"
+           src="{% if snapshot.startswith('data:') %}{{ snapshot }}{% else %}data:image/jpeg;base64,{{ snapshot }}{% endif %}">
+      <svg id="roi-svg" style="position:absolute;inset:0;width:100%;height:100%;
+           cursor:crosshair"></svg>
+    </div>
+    {% else %}
+    <p class="ug-empty">정지영상을 가져오지 못했습니다.<br>
+      탐지 파이프라인이 이 지점의 영상을 아직 받지 못했거나, 스트림이 끊겨 있습니다.
+      잠시 후 새로고침하거나 영상 소스 설정을 확인하세요.</p>
+    {% endif %}
+  </section>
+
+  <section class="ug-card">
+    <h3>그리기</h3>
+    <div class="ug-field">
+      <label for="layer">영역 종류</label>
+      <select id="layer" style="width:100%;padding:11px 12px;background:var(--bg);
+              color:var(--text);border:1px solid var(--border);border-radius:8px">
+        <option value="road_roi">도로 ROI (필수)</option>
+        <option value="low_point_roi">저지대 ROI</option>
+        <option value="lane_threshold_line">침수 경계선 (점 2개)</option>
+      </select>
+    </div>
+    <p class="ug-note" style="margin-top:0">
+      영상을 클릭해 꼭짓점을 찍고, <b>다각형 닫기</b>를 누르면 한 영역이 완성됩니다.
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="ug-btn" type="button" id="btn-close"
+              style="width:auto;padding:8px 14px">다각형 닫기</button>
+      <button class="ug-btn ug-btn--ghost" type="button" id="btn-undo">되돌리기</button>
+      <button class="ug-btn ug-btn--ghost" type="button" id="btn-clear">현재 종류 지우기</button>
+    </div>
+
+    <table class="ug-table" style="min-width:0">
+      <tbody>
+        <tr><th>도로 ROI</th><td><span id="cnt-road">0</span>개</td></tr>
+        <tr><th>저지대 ROI</th><td><span id="cnt-low">0</span>개</td></tr>
+        <tr><th>침수 경계선</th><td><span id="cnt-line">없음</span></td></tr>
+        <tr><th>원본 해상도</th><td><span id="frame-size">—</span></td></tr>
+      </tbody>
+    </table>
+
+    {% if can_edit %}
+    <button class="ug-btn" type="button" id="btn-save" style="margin-top:14px">저장</button>
+    {% else %}
+    <p class="ug-note">조회 권한만 있습니다.</p>
+    {% endif %}
+    <p class="ug-note">저장해도 <b>서비스를 재시작해야 탐지에 반영</b>됩니다.
+      기존 파일은 자동 백업됩니다.</p>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var img = document.getElementById('roi-img');
+  if (!img) return;
+  var svg = document.getElementById('roi-svg');
+  var BLOCK = {{ block.id | tojson }};
+  var COLORS = { road_roi: '#3fb950', low_point_roi: '#e5484d',
+                 lane_threshold_line: '#58a6ff' };
+
+  // 저장된 좌표는 원본 해상도 기준이다. 화면 표시 배율과 분리해 관리한다.
+  var data = {
+    road_roi: {{ (roi.road_roi or []) | tojson }},
+    low_point_roi: {{ (roi.low_point_roi or []) | tojson }},
+    lane_threshold_line: {{ (roi.lane_threshold_line or []) | tojson }}
+  };
+  var draft = [];                    // 그리는 중인 점열 (원본 좌표)
+  var frameW = 0, frameH = 0;
+
+  function layer() { return document.getElementById('layer').value; }
+
+  function measure() {
+    // naturalWidth 는 원본 해상도. 저장 좌표의 기준이 된다.
+    frameW = img.naturalWidth || {{ roi.frame_width or 0 }};
+    frameH = img.naturalHeight || {{ roi.frame_height or 0 }};
+    document.getElementById('frame-size').textContent =
+      frameW && frameH ? frameW + ' × ' + frameH : '확인 불가';
+  }
+
+  function toFrame(evt) {
+    var r = img.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    var x = (evt.clientX - r.left) / r.width * frameW;
+    var y = (evt.clientY - r.top) / r.height * frameH;
+    return [Math.max(0, Math.min(frameW - 1, Math.round(x))),
+            Math.max(0, Math.min(frameH - 1, Math.round(y)))];
+  }
+
+  function el(name, attrs) {
+    var n = document.createElementNS('http://www.w3.org/2000/svg', name);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+
+  function render() {
+    svg.setAttribute('viewBox', '0 0 ' + (frameW || 1) + ' ' + (frameH || 1));
+    svg.setAttribute('preserveAspectRatio', 'none');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var stroke = Math.max(1, Math.round(frameW / 250));
+
+    ['road_roi', 'low_point_roi'].forEach(function (k) {
+      (data[k] || []).forEach(function (poly) {
+        if (!poly || poly.length < 3) return;
+        svg.appendChild(el('polygon', {
+          points: poly.map(function (p) { return p.join(','); }).join(' '),
+          fill: COLORS[k], 'fill-opacity': 0.18,
+          stroke: COLORS[k], 'stroke-width': stroke }));
+      });
+    });
+    var line = data.lane_threshold_line || [];
+    if (line.length === 2) {
+      svg.appendChild(el('line', {
+        x1: line[0][0], y1: line[0][1], x2: line[1][0], y2: line[1][1],
+        stroke: COLORS.lane_threshold_line, 'stroke-width': stroke * 1.4 }));
+    }
+    if (draft.length) {
+      svg.appendChild(el('polyline', {
+        points: draft.map(function (p) { return p.join(','); }).join(' '),
+        fill: 'none', stroke: COLORS[layer()], 'stroke-width': stroke,
+        'stroke-dasharray': stroke * 3 }));
+      draft.forEach(function (p) {
+        svg.appendChild(el('circle', { cx: p[0], cy: p[1], r: stroke * 2,
+                                       fill: COLORS[layer()] }));
+      });
+    }
+    document.getElementById('cnt-road').textContent = (data.road_roi || []).length;
+    document.getElementById('cnt-low').textContent = (data.low_point_roi || []).length;
+    document.getElementById('cnt-line').textContent =
+      (data.lane_threshold_line || []).length === 2 ? '설정됨' : '없음';
+  }
+
+  function msg(text, ok) {
+    document.getElementById('ug-msg').innerHTML =
+      '<p class="ug-error" role="status" style="' +
+      (ok ? 'background:rgba(63,185,80,.14);border-color:rgba(63,185,80,.4);color:#8ee89f'
+          : '') + '">' + text + '</p>';
+  }
+
+  svg.addEventListener('click', function (e) {
+    var p = toFrame(e);
+    if (!p) return;
+    if (layer() === 'lane_threshold_line') {
+      // 기준선은 점 2개로 고정. 세 번째 클릭은 다시 처음부터 그린다.
+      draft.push(p);
+      if (draft.length === 2) { data.lane_threshold_line = draft.slice(); draft = []; }
+      else if (draft.length > 2) { draft = [p]; }
+    } else {
+      draft.push(p);
+    }
+    render();
+  });
+
+  document.getElementById('btn-close').addEventListener('click', function () {
+    var k = layer();
+    if (k === 'lane_threshold_line') { msg('침수 경계선은 점 2개만 찍으면 됩니다.'); return; }
+    if (draft.length < 3) { msg('다각형은 꼭짓점이 3개 이상이어야 합니다.'); return; }
+    data[k] = (data[k] || []).concat([draft.slice()]);
+    draft = [];
+    render();
+    msg('영역을 추가했습니다. 저장을 눌러야 파일에 기록됩니다.', true);
+  });
+
+  document.getElementById('btn-undo').addEventListener('click', function () {
+    if (draft.length) { draft.pop(); }
+    else {
+      var k = layer();
+      if (k === 'lane_threshold_line') data.lane_threshold_line = [];
+      else if ((data[k] || []).length) data[k].pop();
+    }
+    render();
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', function () {
+    var k = layer();
+    draft = [];
+    if (k === 'lane_threshold_line') data.lane_threshold_line = [];
+    else data[k] = [];
+    render();
+  });
+
+  var save = document.getElementById('btn-save');
+  if (save) save.addEventListener('click', function () {
+    save.disabled = true;
+    fetch('/settings/roi/' + encodeURIComponent(BLOCK), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        frame_width: frameW, frame_height: frameH,
+        road_roi: data.road_roi, low_point_roi: data.low_point_roi,
+        lane_threshold_line: data.lane_threshold_line })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        save.disabled = false;
+        if (res.ok) msg(res.message, true);
+        else msg((res.errors || ['저장에 실패했습니다.']).join(' '), false);
+      })
+      .catch(function () { save.disabled = false; msg('저장 요청에 실패했습니다.'); });
+  });
+
+  if (img.complete) { measure(); render(); }
+  else { img.addEventListener('load', function () { measure(); render(); }); }
+  window.addEventListener('resize', render);
+})();
+</script>
+{% endblock %}

@@ -32,6 +32,13 @@ port's judgment call and has NOT been validated against real incident data:
 
 A domain expert should confirm this before the alert thresholds are relied on
 for real shutdown recommendations.
+
+★ 2026-08-21 flood/traffic 도메인 분리: 이 엔진은 S-23 오프라인 파이프라인
+(``standalone_pipeline.py``) 전용으로만 남았고, 그 경로가 여전히
+``traffic_state``/``stopped_vehicles_near_water``를 함께 쓰므로 이 파일은
+``StandaloneFloodMetrics``를 그대로 받는다 — 실시간 경로(RiskEngine)는 이미
+이 두 필드 없이 순수화됐지만, 이 오프라인 규칙엔진 자체의 분리는 이번 범위에서
+제외했다(작업량 대비 가치가 낮다는 판단, docs/202608210801 5절 참고).
 """
 from __future__ import annotations
 
@@ -40,7 +47,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..models import TrafficState
-from .metrics_core import FloodMetrics
+from .metrics_core import StandaloneFloodMetrics as FloodMetrics
 
 LEVEL_NAME = {
     1: "정상",
@@ -109,7 +116,7 @@ class AlertEngine:
                   ratio >= self.ratio_danger),
             _Rule(4, "도로 ROI 전반으로 물 확산 중",
                   ratio >= self.ratio_caution and rising),
-            _Rule(4, "물이 차선 기준선을 넘음",
+            _Rule(4, "물이 침수 경계선을 넘음",
                   m.water_crosses_lane),
             _Rule(4, f"물에 닿은 차량 {m.vehicles_touching_water}대",
                   m.vehicles_touching_water > 0),

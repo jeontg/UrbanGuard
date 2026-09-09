@@ -1,0 +1,101 @@
+# CCTV 재배포 허브(MediaMTX) 기본 설정 — 2026-08-28 신설.
+#
+# 이 파일은 커밋된 "본"이다. 실제로 도는 설정은 `.tools\mediamtx\mediamtx.yml`
+# 이며(그 폴더 전체가 .gitignore에서 제외돼 있다), `scripts\ensure-mediamtx.ps1`
+# 이 없으면 이 파일을 그리로 복사해 첫 실행을 준비한다.
+#
+# ⚠️ `paths:` 를 일부러 비워 둔다. 카메라 경로의 정본은 DB이지 이 YAML이
+# 아니다 — `core/restream.py::sync_all_paths()`(서비스 기동 시 1회)와 카메라
+# CRUD 훅(`service/routes_cameras.py`)이 Control API로 런타임에만 채운다.
+# YAML을 미리 구우면 "DB에는 있는데 YAML에는 없는" 두 번째 정본이 생긴다.
+
+logLevel: info
+logDestinations: [stdout]
+
+# 읽기 타임아웃 — 기본값(10초)로는 부족한 원본이 실측으로 확인됐다
+# (2026-08-29). 서울시 TOPIS 일부 지점(strm4.spatic.go.kr 등)은 10초짜리
+# TS 세그먼트 하나를 받는 데만 4초 이상 걸린다(직접 curl로 측정,
+# 3.99MB/4.43s). 청크리스트 재조회·네트워크 지터가 겹치면 기본 10초를
+# 넘겨 MediaMTX가 "context deadline exceeded"로 풀을 끊고 재시작하기를
+# 반복 — 재배포 경로가 영원히 ready:false로 흔들리는 원인이었다(같은
+# 33곳 중 11곳이 재등록(remove→add)으로도 안 풀리는 것을 실기 확인).
+# 이 값은 Go의 http.Client.Timeout으로 그대로 쓰이는 것으로 보이며
+# (오류 문구가 정확히 그 표준 오류다), 넉넉히 30초로 늘려 여유를 둔다.
+# ⚠️ 확인이 필요합니다 — MediaMTX 공식 문서에 readTimeout이 HLS 소스
+# 풀링에도 적용된다고 명시적으로 확인하지는 못했다(GitHub 이슈로도
+# 확정 안 됨). 실측(재등록 후 안정화 여부)으로 효과를 검증한다.
+readTimeout: 30s
+
+# Control API. core/settings.py::KEY_RESTREAM_API_PORT 기본값(9997)과
+# 반드시 같아야 한다 — 인증이 없는 API라 절대 127.0.0.1 밖으로 열지 않는다.
+api: yes
+apiAddress: 127.0.0.1:9997
+
+# 탐지 서비스(침수+교통위험·인파·노면)가 소비하는 출력. RTSP는 항상
+# **같은 서버의 우리 앱 프로세스**만 접속한다(core/restream.py::
+# rtsp_url()이 rtsp://127.0.0.1:.../<id> 로만 조립) — 원격에서 접속할
+# 이유가 없어 apiAddress(9997)와 같은 이유로 loopback에만 바인딩한다.
+# core/settings.py::KEY_RESTREAM_RTSP_PORT 기본값(8554)과 일치해야 한다.
+#
+# ⚠️ 2026-08-29 위험 점검(R-02) — 예전엔 `:8554`(모든 인터페이스)였다.
+# 인증도 없어 같은 망의 누구나 CCTV를 볼 수 있었다(실기 확인: LAN에서
+# 도달 가능했음).
+rtsp: yes
+protocols: [tcp]
+rtspAddress: 127.0.0.1:8554
+
+# 관제요원 브라우저가 WHEP(WebRTC)으로 소비하는 출력 — 원격 접속이
+# 필요하므로 인터페이스는 그대로 연다.
+# core/settings.py::KEY_RESTREAM_WHEP_PORT 기본값(8889)과 일치해야 한다.
+webrtc: yes
+webrtcAddress: :8889
+
+# ⚠️ 2026-08-29 위험 점검(R-02) — 이 항목이 없으면 MediaMTX 기본값
+# (무인증, 익명에게 publish·read·playback 전부 허용)이 조용히
+# 적용된다(공식 저장소 기본 mediamtx.yml·mediamtx.org/docs/references/
+# configuration-file 대조로 확인). 이 시스템의 모든 카메라 경로는
+# add_path()가 Control API로 등록한 source: 풀 방식이라 **누구도
+# publish 권한이 필요 없다** — 열어 두면 제3자가 임의 카메라 경로에
+# 가짜 영상을 주입해(RTSP ANNOUNCE·RTMP·WHIP) AI 판정과 관제 화면을
+# 오염시킬 수 있다. read/playback(원격 브라우저의 WHEP 재생에 필요)만
+# 열고 publish는 어느 항목에도 넣지 않는다.
+#
+# ⚠️ 확인이 필요합니다 — 관제 PC가 실제로 접속하는 네트워크 대역을
+# 이 저장소만으로는 알 수 없어, 지금은 ips 제한 없이 read/playback을
+# 연다. 대역이 확정되면 아래 첫 user 항목의 ips를 그 CIDR로 좁혀
+# 강화할 수 있다(후속 과제, 이번 범위 밖).
+#
+# ⚠️ 2026-08-29(같은 날 후속) — MediaMTX 자신의 HLS 디먹서가 일부
+# 원본을 읽을 때 간헐적으로 영상을 손상시키는 것을 실측으로 확인해서
+# (원본 직결은 깨끗한데 MediaMTX를 거치면 손상됨), 손상이 심한 카메라
+# 한정으로 ffmpeg를 앞에 둬 원본을 대신 읽고 MediaMTX에는 RTSP로
+# 발행(publish)하게 한다(`core/ffmpeg_relay.py`). 이 발행은 **항상
+# 같은 서버(127.0.0.1)에서만** 일어나므로, 아래 loopback 전용 user에만
+# publish 권한을 추가한다 — R-02가 막은 위험(원격 제3자의 가짜 영상
+# 주입)은 그대로 유지된다(원격 user 항목에는 publish가 없음).
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+        path:
+      - action: playback
+        path:
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+      - action: publish
+        path:
+
+# 이번 범위에서 안 쓰는 출력은 꺼서 자원을 아낀다 — 원본 CCTV가 이미 HLS이고
+# (그래서 재배포 입력은 HLS 풀링), 재배포 출력은 RTSP·WHEP 둘로 충분하다.
+hls: no
+rtmp: no
+srt: no
+
+paths: {}

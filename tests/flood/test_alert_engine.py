@@ -6,16 +6,20 @@ trust from the original underpath_flood_dashboard tests which used plain
 strings).
 """
 from tot_dashboard.flood.alert_engine import AlertEngine
-from tot_dashboard.flood.metrics_core import FloodMetrics
+from tot_dashboard.flood.metrics_core import StandaloneFloodMetrics
 from tot_dashboard.models import TrafficState
 
 
 def _confirmed_level(traffic_state: TrafficState, water_area_ratio: float, persistence: int = 3) -> tuple[int, str]:
+    """★ 2026-08-21: AlertEngine은 S-23 오프라인 파이프라인 전용으로만
+    남았고, 그 경로가 여전히 traffic_state를 쓰므로 여기선
+    StandaloneFloodMetrics를 그대로 쓴다(flood/traffic 도메인 분리 후에도
+    이 시험의 목적 — traffic_state별 규칙 발동 검증 — 은 그대로 유효)."""
     engine = AlertEngine({"persistence_frames": persistence, "cooldown_frames": persistence})
     level = 1
     reason = ""
     for i in range(persistence):
-        m = FloodMetrics(
+        m = StandaloneFloodMetrics(
             frame_number=i, timestamp_sec=float(i),
             water_area_ratio=water_area_ratio, traffic_state=traffic_state,
         )

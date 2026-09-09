@@ -7,7 +7,10 @@ Ported from flood3's ``perception/rainfall_provider.py``.
   TTL-caches the result; falls back on missing key / fetch failure so the
   pipeline never stalls.
 
-``build_rainfall(cfg, coords, fallback)`` selects a provider per blocks.json.
+``build_rainfall(cfg, coords, fallback, default_type)`` selects a provider per
+blocks.json. ``cfg`` (camera-specific) always wins; ``default_type`` (the
+global setting, ``core.settings.rainfall_backend()``) applies only when the
+camera leaves ``rainfall`` unset — 2026-08-27.
 """
 from __future__ import annotations
 
@@ -134,9 +137,17 @@ class KmaRainfallProvider:
     def at(self, t_sec: float) -> WeatherState:
         now = datetime.now().timestamp()
         if self._cached_mm is None or (now - self._fetched_at) >= self.ttl:
+            # ⚠️ 실기 확인(2026-09-01) — `self._fetched_at = now`가 원래
+            # try 블록 "성공 시"에만 있었다. KMA가 429(과다 요청)나 타임아웃을
+            # 계속 돌려주면 `_fetched_at`이 갱신되지 않아 TTL 게이트가 매번
+            # 참이 되고, 이 파이프라인 틱(초당 호출)마다 재시도 폭주로
+            # 이어진다 — 실제로 platform-shell 로그에 이 실패 메시지가
+            # 12만 건 이상 연속으로 찍힌 것을 이번 점검 중 발견했다(당시
+            # KMA 백엔드가 전역 기본값이었던 시기, 지금은 dormant). 성공/실패
+            # 관계없이 시도 시각을 먼저 찍어 TTL 동안은 반드시 쉬게 한다.
+            self._fetched_at = now
             try:
                 self._cached_mm = self._fetch()
-                self._fetched_at = now
             except Exception as e:  # noqa: BLE001
                 if self._cached_mm is None:
                     if self.fallback is not None:
@@ -149,10 +160,18 @@ class KmaRainfallProvider:
 
 
 def build_rainfall(cfg: dict | None, coords: dict,
-                   fallback: RainfallProvider) -> RainfallProvider:
-    """blocks.json ``rainfall`` config -> provider. type: sine(default)|mock|kma."""
-    cfg = cfg or {"type": "sine"}
-    t = cfg.get("type", "sine")
+                   fallback: RainfallProvider,
+                   default_type: str = "sine") -> RainfallProvider:
+    """blocks.json ``rainfall`` config -> provider. type: sine(default)|mock|kma.
+
+    ``cfg`` 는 **카메라별 명시 설정**이다 — 있으면 항상 이긴다. 카메라가
+    아무것도 지정하지 않았을 때만 ``default_type``(전역 기본값, S-95
+    ``core.settings.rainfall_backend()``)을 쓴다. 이렇게 나눠 둔 이유는
+    39개소를 하나씩 고치지 않고도 관리자가 화면 설정 하나로 실측/합성을
+    바꿀 수 있게 하려는 것이다(2026-08-27, 교통위험 실측 연동 요청).
+    """
+    cfg = cfg or {"type": default_type}
+    t = cfg.get("type", default_type)
     if t == "kma":
         key = os.environ.get("KMA_SERVICE_KEY")
         if not key:

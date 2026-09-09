@@ -1,0 +1,53 @@
+{
+  "_주의": [
+    "이 파일은 실제 시설 정보가 아니라 **설정 템플릿**입니다.",
+    "지하차도 진입차단시설·배수펌프장의 실재 여부, 관리 주체, 연동 규격은",
+    "도로관리청과 시설 제조사 확인이 필요합니다(docs/ui_design_spec.md 11절 1번).",
+    "확인 전까지 모든 시설의 link 는 'none'(미연계)으로 두고, 화면에서도",
+    "'미연계'로 표시해 연동된 것처럼 오인하지 않게 합니다."
+  ],
+  "_link_values": {
+    "none": "미연계 — 연동 규격 미확보",
+    "ok": "정상 — 상태 조회·제어 가능",
+    "error": "연동 오류 — 점검 필요"
+  },
+  "_type_values": {
+    "gate": "진입차단시설",
+    "pump": "배수펌프장",
+    "sign": "전광 표지판"
+  },
+  "facilities": [
+    {
+      "id": "FAC-CHORYANG-GATE",
+      "name": "초량 지하차도 진입차단시설",
+      "type": "gate",
+      "block_id": "BLOCK-CHORYANG",
+      "manager": "도로관리청",
+      "link": "none"
+    },
+    {
+      "id": "FAC-BEOMNAEGOL-GATE",
+      "name": "범내골 지하차도 진입차단시설",
+      "type": "gate",
+      "block_id": "BLOCK-BEOMNAEGOL",
+      "manager": "도로관리청",
+      "link": "none"
+    },
+    {
+      "id": "FAC-CENTUM-PUMP",
+      "name": "센텀 배수펌프장",
+      "type": "pump",
+      "block_id": "BLOCK-CENTUMSTN",
+      "manager": "하수도과",
+      "link": "none"
+    },
+    {
+      "id": "FAC-BUSANSTN-SIGN",
+      "name": "부산역 앞 전광 표지판",
+      "type": "sign",
+      "block_id": "BLOCK-BUSANSTN",
+      "manager": "교통정보센터",
+      "link": "none"
+    }
+  ]
+}

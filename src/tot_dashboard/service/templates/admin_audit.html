@@ -1,0 +1,69 @@
+{% extends "_layout.html" %}
+{% block title %}감사 로그 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>감사 로그</h2>
+  <p>로그인·계정변경·알림발송·설정변경 기록입니다.
+    {% if scoped %}본인 부서({{ user.dept or "미지정" }}) 기록만 표시됩니다.{% endif %}</p>
+</div>
+
+<div class="ug-card" style="margin-bottom:16px">
+  <form method="get" action="/admin/audit"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:200px;flex:1 1 200px">
+      <label for="f-action">행위</label>
+      <select id="f-action" name="action" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in actions %}
+        <option value="{{ v }}" {% if sel_action == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:180px;flex:1 1 180px">
+      <label for="f-q">아이디</label>
+      <input id="f-q" name="q" value="{{ q }}" placeholder="일부만 입력해도 됩니다">
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+  </form>
+</div>
+
+<div class="ug-card">
+  <h3>최근 기록 ({{ rows|length }}건, 최대 300건)</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>시각</th><th>행위</th><th>사용자</th><th>부서</th>
+        <th>대상</th><th>IP</th><th>변경 내용</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        <td>
+          {% set lbl = labels.get(r.action, r.action) %}
+          {% if r.action in ("login.failure", "login.locked") %}
+            <span class="ug-badge ug-badge--warn">{{ lbl }}</span>
+          {% elif r.action == "notify.solo_send" %}
+            <span class="ug-badge ug-badge--crit">{{ lbl }}</span>
+          {% else %}{{ lbl }}{% endif %}
+        </td>
+        <td>{{ r.login_id or "—" }}</td>
+        <td>{{ r.dept or "—" }}</td>
+        <td>{{ r.target or "—" }}</td>
+        <td>{{ r.ip or "—" }}</td>
+        <td style="white-space:normal;max-width:320px;font-size:.8rem;color:var(--muted)">
+          {% if r.before %}이전: {{ r.before }}<br>{% endif %}
+          {% if r.after %}이후: {{ r.after }}{% endif %}
+          {% if not r.before and not r.after %}—{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="ug-empty">기록이 없습니다.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

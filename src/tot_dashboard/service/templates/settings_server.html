@@ -1,0 +1,277 @@
+{# S-87 서버 운영 — 운영체제와 재기동 방식.
+
+   이 화면이 하는 일
+     이 시스템은 리눅스와 윈도우 양쪽에 납품된다. 어느 환경인지, 누가
+     프로세스를 지켜보는지를 여기서 정하면 S-01 의 재기동 버튼이 그에 맞게
+     동작하고 안내문·로그 위치도 그 환경의 것으로 바뀐다.
+
+   왜 OS 와 감시 방식을 따로 받는가
+     OS 만으로는 재기동 방식이 정해지지 않는다. 같은 리눅스라도 systemd 로
+     띄웠는지 스크립트로 띄웠는지에 따라 다르다.
+
+   설정값과 감지값을 나란히 보여 주는 이유
+     하나만 보여 주면 설정이 현실과 어긋나 있어도 화면은 멀쩡해 보인다. #}
+{% extends "_layout.html" %}
+{% block title %}서버 운영 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>서버 운영</h2>
+  <p>운영체제와 <b>누가 서비스를 지켜보는지</b>를 정합니다. 통합 상황판(S-01)의
+    재기동 버튼이 이 설정에 따라 동작합니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+<!-- 현재 상태 — 설정 vs 실제 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>현재 상태</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table" style="min-width:0">
+      <tbody>
+        <tr><th style="width:150px">운영체제</th>
+          <td>설정 <b>{{ prof.os_label }}</b>
+            <span style="color:var(--muted)">·</span>
+            실제 <b>{{ prof.real_os_label }}</b>
+            {% if prof.os_mismatch %}
+            <span class="ug-badge ug-badge--warn" style="margin-left:6px">불일치</span>
+            {% endif %}
+          </td></tr>
+        <tr><th>재기동 방식</th>
+          <td>설정 <b>{{ prof.strategy_label }}</b>
+            <span style="color:var(--muted)">·</span>
+            감지 <b>{{ prof.detected_label }}</b>
+            {% if prof.detected is none %}
+            <span class="ug-badge ug-badge--off" style="margin-left:6px">확인 불가</span>
+            {% elif prof.detected == prof.strategy %}
+            <span class="ug-badge ug-badge--on" style="margin-left:6px">일치</span>
+            {% else %}
+            <span class="ug-badge ug-badge--crit" style="margin-left:6px">불일치</span>
+            {% endif %}
+          </td></tr>
+        {% if prof.service_name %}
+        <tr><th>서비스·유닛 이름</th><td><code>{{ prof.service_name }}</code></td></tr>
+        {% endif %}
+        <tr><th>재기동 가능</th>
+          <td>{% if prof.can_restart %}
+            <span class="ug-badge ug-badge--on">가능</span>
+          {% else %}
+            <span class="ug-badge ug-badge--crit">불가</span>
+            <div style="margin-top:6px;color:#ffcf7a;font-size:.85rem">{{ prof.reason }}</div>
+          {% endif %}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if prof.os_mismatch %}
+  <p class="ug-note" style="color:#ffcf7a;margin-top:12px">
+    운영체제를 <b>{{ prof.os_label }}</b>로 설정하셨는데 실제로는
+    <b>{{ prof.real_os_label }}</b>에서 돌고 있습니다. 납품 대상 서버를 미리
+    설정해 두신 것이라면 정상이며, 그렇지 않다면 설정을 실제와 맞춰 주십시오.</p>
+  {% endif %}
+</div>
+
+<!-- 설정 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>설정</h3>
+  <form method="post" action="/settings/server" id="srv-form">
+    <div class="ug-cards" style="--ug-gap:12px">
+      <div class="ug-field"><label for="s-os">운영체제</label>
+        <select id="s-os" name="server_os" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          {% for v, l in os_options %}
+          <option value="{{ v }}" {% if os_choice == v %}selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select>
+        <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">
+          「자동 감지」는 지금 돌고 있는 OS를 씁니다. 납품 대상 서버를 미리
+          지정하려면 직접 고르십시오.</p></div>
+
+      <div class="ug-field"><label for="s-strategy">재기동 방식</label>
+        <select id="s-strategy" name="restart_strategy"
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px"></select>
+        <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">
+          <b>누가 프로세스를 지켜보는가</b>입니다. 운영체제를 바꾸면 고를 수
+          있는 항목도 바뀝니다.</p></div>
+
+      <div class="ug-field" id="name-wrap"><label for="s-name">서비스·유닛 이름</label>
+        <input id="s-name" name="service_name" autocomplete="off"
+               value="{{ cur_name }}" placeholder="urbanguard">
+        <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">
+          로그 확인 명령에 쓰입니다. 비우면 기본값을 씁니다.</p></div>
+    </div>
+
+    <div class="ug-field" id="ack-wrap" style="display:none">
+      <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+        <input type="checkbox" name="supervision_ack" value="1"
+               style="margin-top:3px"{% if cur_ack %} checked{% endif %}>
+        <span>이 서버가 <b>실제로 감시 아래에서 동작함을 확인</b>했습니다.
+          <span style="display:block;font-size:.8rem;color:var(--muted);
+                       margin-top:3px">
+            프로그램이 스스로 확인할 수 없는 방식이라 관리자 확인이 필요합니다.
+            표시하지 않으면 재기동 버튼이 잠깁니다. 재기동 방식을 바꾸면 이
+            표시는 자동으로 해제됩니다.</span></span>
+      </label>
+    </div>
+
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 20px;margin-top:6px">저장</button>
+  </form>
+</div>
+
+<!-- 성능 — 서비스별 스레드 상한 (2026-09-02 신설, 속도 개선 2단계 —
+     이후 사용자 요청으로 서비스마다 다른 값을 지정하도록 재설계).
+     OS/재기동 방식 폼과 관심사가 달라 별도 폼으로 뺐다 — 하나가 저장
+     실패해도 다른 하나에 영향이 없게. -->
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>성능</h3>
+  <p class="ug-note">이 서버의 논리 코어 수: <b>{{ cpu_count }}개</b>
+    <span style="color:var(--muted)">·</span> 서비스당 권장값
+    <b>{{ recommended_torch_threads }}</b>(코어 수 ÷ 4). 침수·교통위험·
+    인파관리·노면관리 4개 서비스가 각자 별도 프로세스로 떠서 실시간
+    영상분석을 하는데, 아무 제한도 없으면 서로 코어를 다 쓰려 들어
+    실제 연산량과 무관한 경합만 늘어납니다(2026-09-02 실측). 서비스마다
+    쓸 수 있는 스레드 수를 여기서 각각 정합니다 — 도메인마다 무게가
+    달라서(침수·교통위험은 무겁고 인파관리는 가벼운 식) 하나로 묶기보다
+    따로 조정하는 편이 낫습니다.</p>
+
+  <div class="ug-tablewrap">
+    <table class="ug-table" style="min-width:0">
+      <thead><tr><th>서비스</th><th>설정</th><th style="width:140px">스레드 상한</th></tr></thead>
+      <tbody>
+        {% for key, label in service_list %}
+        <tr>
+          <td>{{ label }}</td>
+          <td>
+            {% if key in cur_service_threads %}
+            설정 <b>{{ cur_service_threads[key] }}</b>
+            {% else %}
+            자동(<b>{{ recommended_torch_threads }}</b>)
+            {% endif %}
+          </td>
+          <td>
+            <input name="threads_{{ key }}" form="perf-form" type="number" min="1"
+                   placeholder="자동 ({{ recommended_torch_threads }})"
+                   value="{{ cur_service_threads[key] if key in cur_service_threads else '' }}"
+                   style="width:110px;padding:8px 10px;background:var(--bg);
+                          color:var(--text);border:1px solid var(--border);
+                          border-radius:8px">
+          </td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <th>합계(5개 서비스가 전부 뜰 때)</th>
+          <td colspan="2">
+            <b>{{ total_effective_threads }}</b> / 코어 수 {{ cpu_count }}
+            {% if threads_over_limit %}
+            <span class="ug-badge ug-badge--warn" style="margin-left:6px"
+                  title="5개 서비스 스레드 상한 합계가 이 서버의 코어 수보다 큽니다 — 실제 이득 없이 스케줄링 경합만 늘어날 수 있습니다">초과</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <form id="perf-form" method="post" action="/settings/server/performance">
+    <p style="margin:12px 0 0;font-size:.78rem;color:var(--muted)">
+      비워두면 그 서비스는 자동값을 씁니다. <b>코어 수(합계)를 넘는
+      값도 입력할 수 있습니다</b>(막지 않습니다) — 다만 합계가 넘으면
+      위에 "초과" 표시가 계속 뜹니다. <b>저장해도 지금 떠 있는
+      서비스에는 반영되지 않습니다</b> — 다음 서비스 재기동(정지 후
+      시작)부터 적용됩니다.</p>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 20px;margin-top:10px">저장</button>
+  </form>
+</div>
+
+<!-- 방식별 등록 방법 -->
+<div class="ug-card">
+  <h3>등록 방법 · 문제 확인</h3>
+  {% for s, l in strategy_labels.items() %}
+  <details id="guide-{{ s }}" style="padding:10px 0;
+           border-top:1px solid var(--border)">
+    <summary style="cursor:pointer;font-weight:600">{{ l }}</summary>
+    <div style="margin-top:10px;font-size:.86rem;line-height:1.6">
+      <p style="margin:0 0 4px"><b>등록</b></p>
+      <pre style="margin:0 0 12px;padding:10px 12px;background:var(--bg);
+                  border:1px solid var(--border);border-radius:8px;
+                  overflow-x:auto;white-space:pre-wrap;font-size:.82rem"
+        >{{ guides[s].setup }}</pre>
+      <p style="margin:0 0 4px"><b>로그</b></p>
+      <p style="margin:0 0 12px;color:var(--muted)"><code>{{ guides[s].log }}</code></p>
+      <p style="margin:0 0 4px"><b>상태 확인</b></p>
+      <p style="margin:0 0 12px;color:var(--muted)"><code>{{ guides[s].status }}</code></p>
+      <p style="margin:0;color:var(--muted);font-size:.82rem">
+        {{ guides[s].detect_note }}</p>
+    </div>
+  </details>
+  {% endfor %}
+</div>
+
+<p class="ug-note">재기동은 어느 방식에서든 <b>같은 방법</b>으로 이뤄집니다 —
+  서비스가 종료 코드 <code>42</code> 로 스스로 죽고, 지켜보던 쪽이 다시
+  띄웁니다. <code>systemctl restart</code> 같은 외부 명령을 제품이 직접
+  실행하지 않는 이유는, 자기 자신을 죽이는 명령이라 결과를 알 수 없고
+  권한 상승(sudo 등)을 서비스 계정에 줘야 하기 때문입니다.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 운영체제를 바꾸면 고를 수 있는 재기동 방식도 바뀐다. 서버에서 한 번 더
+// 막지만, 화면에서 애초에 못 고르게 해야 「저장했더니 오류」가 안 난다.
+(function () {
+  var BY_OS = {{ strategies_by_os | tojson }};
+  var CUR = {{ cur_strategy | tojson }};
+  var REAL_OS = {{ prof.real_os | tojson }};
+  // 두 목록의 원본은 core/server_profile.py 다. 화면에 다시 적으면 어긋난다.
+  var NEEDS_ACK = {{ needs_ack | tojson }};
+  var NO_NAME = {{ no_service_name | tojson }};
+
+  var osSel = document.getElementById('s-os');
+  var stSel = document.getElementById('s-strategy');
+  var ackWrap = document.getElementById('ack-wrap');
+  var nameWrap = document.getElementById('name-wrap');
+
+  function effOs() {
+    var v = osSel.value;
+    return (v === 'linux' || v === 'windows') ? v : REAL_OS;
+  }
+
+  function fill() {
+    var list = BY_OS[effOs()] || [];
+    var keep = stSel.value || CUR;
+    stSel.innerHTML = '';
+    var found = false;
+    list.forEach(function (pair) {
+      var o = document.createElement('option');
+      o.value = pair[0];
+      o.textContent = pair[1];
+      if (pair[0] === keep) { o.selected = true; found = true; }
+      stSel.appendChild(o);
+    });
+    // 고르던 방식이 새 OS 에 없으면 첫 항목으로 떨어진다.
+    if (!found && stSel.options.length) { stSel.options[0].selected = true; }
+    sync();
+  }
+
+  function sync() {
+    var v = stSel.value;
+    ackWrap.style.display = NEEDS_ACK.indexOf(v) >= 0 ? '' : 'none';
+    nameWrap.style.display = NO_NAME.indexOf(v) >= 0 ? 'none' : '';
+    // 고른 방식의 안내를 펼쳐 준다 — 고르자마자 무엇을 해야 하는지 보여야 한다.
+    document.querySelectorAll('details[id^="guide-"]').forEach(function (d) {
+      d.open = (d.id === 'guide-' + v);
+    });
+  }
+
+  osSel.addEventListener('change', fill);
+  stSel.addEventListener('change', sync);
+  fill();
+})();
+</script>
+{% endblock %}

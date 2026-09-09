@@ -1,0 +1,63 @@
+{% extends "_layout.html" %}
+{% block title %}통보 이력 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>통보 이력</h2>
+  <p>요청·승인·발송 기록입니다. 감사 대응의 근거가 되므로 삭제하지 않습니다.</p>
+</div>
+
+<div class="ug-card" style="margin-bottom:16px">
+  <form method="get" action="/notify/history"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:200px;flex:1 1 200px">
+      <label for="f-status">상태</label>
+      <select id="f-status" name="status" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in statuses %}
+        <option value="{{ v }}" {% if sel_status == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+  </form>
+</div>
+
+<div class="ug-card">
+  <h3>기록 {{ rows|length }}건</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>요청 시각</th><th>계층</th><th>도메인</th><th>이벤트</th>
+        <th>상태</th><th>수신</th><th>문안</th><th>비고</th>
+      </tr></thead>
+      <tbody>
+      {% for n in rows %}
+      {% set tier = tier_of(n) %}
+      <tr>
+        <td>{{ n.requested_at.strftime("%m-%d %H:%M") }}</td>
+        <td><span class="ug-badge {% if tier == 'resident' %}ug-badge--crit{% else %}ug-badge--off{% endif %}">
+          {{ tier_labels.get(tier, tier) }}</span></td>
+        <td>{{ domain_labels.get(n.domain, n.domain) or "—" }}</td>
+        <td>{% if n.case_id %}<a href="/events/{{ n.case_id }}"
+              style="color:var(--accent);text-decoration:none">#{{ n.case_id }}</a>
+            {% else %}—{% endif %}</td>
+        <td><span class="ug-badge {{ status_badge.get(n.status,'ug-badge--off') }}">
+          {{ status_labels.get(n.status, n.status) }}</span>
+          {% if n.needs_post_approval %}
+          <span class="ug-badge ug-badge--warn">사후승인 필요</span>{% endif %}</td>
+        <td>{{ n.recipients_count }}</td>
+        <td style="white-space:normal;max-width:280px;font-size:.82rem">
+          {{ (n.body or "—")[:80] }}{% if (n.body or "")|length > 80 %}…{% endif %}</td>
+        <td style="white-space:normal;font-size:.8rem;color:var(--muted)">
+          {{ n.reject_reason or "—" }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="ug-empty">기록이 없습니다.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

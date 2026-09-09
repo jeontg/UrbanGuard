@@ -1,0 +1,346 @@
+{% extends "_layout.html" %}
+{% block title %}기관 정보·화면 설정 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>기관 정보 · 화면 설정</h2>
+  <p>화면 좌측 상단 <b>로고</b>, 가운데 상단 <b>기관명·솔루션명</b>, 상황판
+    <b>배경색</b>을 바꿉니다. 모든 변경은 감사 로그에 기록됩니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+<form method="post" action="/settings/org" enctype="multipart/form-data">
+  <div class="ug-cards" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+
+    <section class="ug-card">
+      <h3>화면 상단 문구</h3>
+      <div class="ug-field">
+        <label for="org_name">기관명</label>
+        <input id="org_name" name="org_name" value="{{ cur_org }}" required
+               autocomplete="organization" oninput="syncTitle()">
+      </div>
+      <div class="ug-field">
+        <label for="solution_name">솔루션명</label>
+        <input id="solution_name" name="solution_name" value="{{ cur_solution }}"
+               required maxlength="40" oninput="syncTitle()">
+      </div>
+      <p class="ug-note">두 값이 이어져 <b>가운데 상단</b>에 표시됩니다 —
+        「기관명 솔루션명」. 로그인 화면과 보고서 제목에도 같은 값이 쓰입니다.</p>
+    </section>
+
+    <section class="ug-card">
+      <h3>로고 <span style="font-size:.78rem;color:var(--muted);font-weight:400"
+        >화면 좌측 상단</span></h3>
+
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+                  padding:12px;border:1px solid var(--border);border-radius:8px;
+                  background:{{ preview.bg }};margin-bottom:12px">
+        <img id="logo-preview" src="{{ logo_url }}" alt="현재 로고"
+             style="height:44px;width:auto;max-width:220px;object-fit:contain">
+        <div style="font-size:.82rem;color:{{ preview.muted }}">
+          <div>{{ '기관 업로드 로고' if logo_is_custom else '기본 로고 (UrbanGuard)' }}</div>
+          <div style="margin-top:3px">크기 <b id="logo-size"
+            style="color:{{ preview.text }}">{{ logo_size_text }}</b></div>
+        </div>
+      </div>
+
+      {% if logo_narrow %}
+      <p class="ug-error" role="alert" style="margin:0 0 12px">
+        현재 로고 가로 {{ logo_width }}px 은 권장보다 작아 화면에서 흐리게 보일 수
+        있습니다. 권장 {{ logo_recommended }} 이상.</p>
+      {% endif %}
+
+      <div class="ug-field">
+        <label for="logo">로고 파일 교체</label>
+        <input id="logo" name="logo" type="file"
+               accept="image/png,image/jpeg,image/webp" onchange="showPicked()"
+               style="width:100%;padding:9px;background:var(--bg);color:var(--text);
+                      border:1px solid var(--border);border-radius:8px">
+      </div>
+      <p class="ug-note" style="margin-top:0">
+        권장 크기 <b>{{ logo_recommended }}</b> · PNG·JPG·WEBP · 최대 {{ max_logo_mb }}MB<br>
+        가로로 긴 형태(약 4.7 : 1)가 사이드바에 가장 잘 맞습니다.
+        <b>배경이 비치는 PNG</b>를 쓰면 배경색을 바꿔도 자연스럽습니다.
+      </p>
+      <p class="ug-note" style="margin-top:0">
+        ⚠ 업로드 로고는 <b>한 장만</b> 쓰입니다. 기본 로고처럼 배경 밝기에 따라
+        밝은판·어두운판이 자동으로 갈리지 않으니, 위 미리보기에서 현재 배경과의
+        대비를 확인하세요.
+      </p>
+    </section>
+
+    <section class="ug-card">
+      <h3>상황판 배경색</h3>
+      <p class="ug-stat-label" style="margin:0 0 10px">미리 준비된 배경</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+        {% for hex, name, desc in presets %}
+        <label title="{{ desc }}"
+               style="display:flex;align-items:center;gap:8px;padding:7px 11px;
+                      border:1px solid {% if hex == cur_bg %}var(--accent){% else %}var(--border){% endif %};
+                      border-radius:8px;cursor:pointer;font-size:.85rem">
+          <input type="radio" name="preset" value="{{ hex }}"
+                 {% if hex == cur_bg %}checked{% endif %}
+                 onclick="applyPreset('{{ hex }}')" style="margin:0">
+          <span style="width:16px;height:16px;border-radius:4px;background:{{ hex }};
+                       border:1px solid var(--border);display:inline-block"></span>
+          {{ name }}
+        </label>
+        {% endfor %}
+      </div>
+
+      <div class="ug-field">
+        <label for="board_bg">직접 지정 (#RRGGBB)</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input id="board_bg" name="board_bg" value="{{ cur_bg }}" required
+                 pattern="#?[0-9A-Fa-f]{6}" style="flex:1 1 auto"
+                 oninput="syncSwatch()">
+          <input id="board_bg_picker" type="color" value="{{ cur_bg }}"
+                 onchange="document.getElementById('board_bg').value=this.value.toUpperCase();syncSwatch()"
+                 aria-label="색상 선택기"
+                 style="width:52px;height:44px;padding:2px;background:var(--bg);
+                        border:1px solid var(--border);border-radius:8px;cursor:pointer">
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="ug-card" style="margin-top:16px">
+    <h3>미리보기</h3>
+    <div id="preview" style="border:1px solid var(--border);border-radius:10px;
+         padding:16px;background:{{ preview.bg }}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <img id="pv-logo" src="{{ logo_url }}" alt=""
+             style="height:26px;width:auto;max-width:150px;object-fit:contain">
+        <span id="pv-title" style="color:{{ preview.text }};font-weight:700">
+          {{ cur_org }} {{ cur_solution }}</span>
+        <span id="pv-muted" style="color:{{ preview.muted }};font-size:.82rem">
+          미처리 3 · 처리중 2 · 강수 12mm/h</span>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        {% for label, color in [("심각","#e5484d"),("경계","#e8843b"),
+                                ("주의","#d4a017"),("정상","#3fb950")] %}
+        <div class="pv-card" style="flex:1 1 120px;min-width:120px;padding:11px 13px;
+             border-radius:8px;background:{{ preview.panel }};
+             border:1px solid {{ preview.border }}">
+          <div style="color:{{ color }};font-weight:800;font-size:1.05rem">{{ label }}</div>
+          <div class="pv-sub" style="color:{{ preview.muted }};font-size:.78rem">지점 상태</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <p id="warnbox" class="ug-error" style="margin-top:14px;{% if not warning %}display:none{% endif %}"
+       role="alert">{{ warning or "" }}</p>
+
+    <p class="ug-note">관제실은 3교대 24시간 근무라 <b>어두운 배경을 권장</b>합니다.
+      밝은 배경은 야간 근무 시 눈부심을 일으키고, 위험등급 색상의 변별력도 떨어집니다.</p>
+  </section>
+
+  {# 화면 정렬. 값이 바뀔 때마다 카드가 자리를 옮겨 「읽던 지점을 놓친다」는
+     지적에서 나온 설정이다. 위험도순은 위험한 곳을 위로 올려 주는 이점이
+     있으므로 없애지 않고 **고를 수 있게** 했다. #}
+  <section class="ug-card" style="margin-top:16px">
+    <h3>실시간 관제 화면 정렬</h3>
+    <p class="ug-note" style="margin-top:0">
+      실시간 관제(S-20) 화면은 몇 초마다 갱신됩니다. 기본값은 <b>위험도순</b>이라
+      값이 바뀔 때마다 지점 카드가 자리를 옮기는데, 관제 중 <b>읽고 있던 지점을
+      놓치는</b> 일이 생깁니다. 자리를 고정하려면 아래에서 바꾸십시오.
+    </p>
+
+    <div class="ug-cards" style="--ug-gap:12px;
+         grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+      <div class="ug-field" style="margin:0">
+        <label for="card_order">지점 카드 순서</label>
+        <select id="card_order" name="card_order"
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px">
+          {% for v, (label, desc) in card_orders.items() %}
+          <option value="{{ v }}" {% if card_order == v %}selected{% endif %}
+                  title="{{ desc }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">
+          {% for v, (label, desc) in card_orders.items() %}
+          {% if card_order == v %}{{ desc }}{% endif %}
+          {% endfor %}</p>
+      </div>
+
+      <div class="ug-field" style="margin:0">
+        <label for="object_order">카드 안 차량 목록 순서</label>
+        <select id="object_order" name="object_order"
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px">
+          {% for v, (label, desc) in object_orders.items() %}
+          <option value="{{ v }}" {% if object_order == v %}selected{% endif %}
+                  title="{{ desc }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">
+          {% for v, (label, desc) in object_orders.items() %}
+          {% if object_order == v %}{{ desc }}{% endif %}
+          {% endfor %}</p>
+      </div>
+    </div>
+
+    <p class="ug-note" style="margin-top:12px">
+      순서를 고정해도 <b>표시되는 내용은 그대로</b>입니다. 차량 목록은 어느
+      쪽을 고르든 <b>감속이 큰 차량을 골라</b> 보여 주며, 여기서 정하는 것은
+      줄 세우는 순서뿐입니다. 위험한 지점을 놓치지 않으려면 카드의 등급 배지와
+      이벤트 큐(S-02)를 함께 보십시오.
+    </p>
+  </section>
+
+  <section class="ug-card" style="margin-top:16px">
+    <h3>통합 상황판 배경지도</h3>
+    <p class="ug-note" style="margin-top:0">
+      비워 두면 <b>기존 배치 도식</b>을 씁니다. 주소를 넣으면 상황판(S-01)이
+      그 서버에서 지도 타일을 직접 내려받아 지점을 그 위에 찍습니다.
+    </p>
+
+    <div class="ug-field">
+      <label for="map_tile_url">타일 주소 (XYZ)</label>
+      <input id="map_tile_url" name="map_tile_url" value="{{ map_tile_url }}"
+             placeholder="https://tile.example.org/{z}/{x}/{y}.png"
+             autocomplete="off" spellcheck="false">
+    </div>
+    <div class="ug-cards" style="--ug-gap:12px;
+         grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div class="ug-field" style="margin:0">
+        <label for="map_attribution">저작권 표기</label>
+        <input id="map_attribution" name="map_attribution"
+               value="{{ map_attribution }}" placeholder="© OpenStreetMap 기여자">
+      </div>
+      <div class="ug-field" style="margin:0">
+        <label for="map_max_zoom">최대 확대 단계 (5~22)</label>
+        <input id="map_max_zoom" name="map_max_zoom" inputmode="numeric"
+               value="{{ map_max_zoom }}">
+      </div>
+    </div>
+
+    <p class="ug-error" role="note" style="margin-top:12px">
+      ⚠ <b>기관 정책을 먼저 확인하십시오.</b> 이 기능은 관제 PC가 외부
+      타일 서버에 직접 접속하게 만듭니다.<br>
+      · 관제망에서 외부 접속이 <b>막혀 있으면</b> 지도가 뜨지 않고 배치 도식으로
+      되돌아갑니다.<br>
+      · 허용돼 있으면 <b>보고 있는 지역이 타일 제공자에게 드러납니다.</b><br>
+      · 대부분의 지도는 <b>저작권 표기가 의무</b>입니다. 위 칸을 채우세요.
+    </p>
+    <p class="ug-note">
+      지자체 GIS(WMTS)나 국토교통부 브이월드처럼 <b>기관이 승인한 주소</b>를
+      쓰는 편이 안전합니다. 인증키가 필요한 서비스는 주소에 키가 포함되며,
+      그 주소는 화면 코드에 그대로 노출됩니다.
+    </p>
+  </section>
+
+  <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 26px">저장</button>
+  </div>
+</form>
+
+<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+  <form method="post" action="/settings/org/reset" style="margin:0">
+    <button class="ug-btn ug-btn--ghost" type="submit">배경색을 기본값으로 되돌리기</button>
+  </form>
+  {% if logo_is_custom %}
+  <form method="post" action="/settings/org/logo/reset" style="margin:0">
+    <button class="ug-btn ug-btn--ghost" type="submit">기본 로고로 되돌리기</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 저장 전에도 결과를 볼 수 있도록 미리보기를 즉시 갱신한다.
+// 색 계산 규칙은 서버(core/settings.py derive_theme)와 동일하게 유지해야 한다.
+function hexToRgb(h) {
+  h = (h || '').trim().replace('#', '');
+  if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+function lin(c) { var v = c / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+function lum(rgb) { return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]); }
+function ratio(a, b) { var la = lum(a), lb = lum(b), hi = Math.max(la, lb), lo = Math.min(la, lb);
+  return (hi + 0.05) / (lo + 0.05); }
+function shift(rgb, amt) {
+  var dark = lum(rgb) < 0.5;
+  return '#' + rgb.map(function (c) {
+    var v = dark ? c + amt : c - amt;
+    return Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0').toUpperCase();
+  }).join('');
+}
+function syncSwatch() {
+  var raw = document.getElementById('board_bg').value;
+  var rgb = hexToRgb(raw);
+  var warn = document.getElementById('warnbox');
+  if (!rgb) {
+    warn.textContent = '색상 형식이 올바르지 않습니다. #RRGGBB 로 입력하세요.';
+    warn.style.display = '';
+    return;
+  }
+  var lightBg = lum(rgb) >= 0.5;
+  var text = lightBg ? '#161E2E' : '#E7ECF5';
+  var muted = lightBg ? '#5A6B85' : '#93A0BB';
+  var pv = document.getElementById('preview');
+  pv.style.background = raw.startsWith('#') ? raw : '#' + raw;
+  document.getElementById('pv-title').style.color = text;
+  document.getElementById('pv-muted').style.color = muted;
+  document.querySelectorAll('.pv-card').forEach(function (el) {
+    el.style.background = shift(rgb, 12);
+    el.style.borderColor = shift(rgb, 30);
+  });
+  document.querySelectorAll('.pv-sub').forEach(function (el) { el.style.color = muted; });
+  document.getElementById('board_bg_picker').value =
+    '#' + rgb.map(function (c) { return c.toString(16).padStart(2, '0'); }).join('');
+
+  var r = ratio(rgb, hexToRgb(text));
+  if (r < 4.5) {
+    warn.textContent = '본문 글자와의 명도 대비가 ' + r.toFixed(1) +
+      ':1 로 접근성 기준(4.5:1)에 못 미칩니다.';
+    warn.style.display = '';
+  } else {
+    warn.style.display = 'none';
+  }
+}
+function applyPreset(hex) {
+  document.getElementById('board_bg').value = hex;
+  syncSwatch();
+}
+
+// 상단 문구는 「기관명 솔루션명」으로 이어 붙는다. 저장 전에 결과를 보여 준다.
+function syncTitle() {
+  var org = document.getElementById('org_name').value.trim();
+  var sol = document.getElementById('solution_name').value.trim();
+  document.getElementById('pv-title').textContent = (org + ' ' + sol).trim();
+}
+
+// 파일을 고르면 올리기 전에 미리보기와 크기를 바꿔 준다 — 잘못 고른 파일을
+// 저장한 뒤에야 알아채는 일을 막는다.
+function showPicked() {
+  var input = document.getElementById('logo');
+  var file = input.files && input.files[0];
+  var sizeEl = document.getElementById('logo-size');
+  if (!file) return;
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function () {
+    document.getElementById('logo-preview').src = url;
+    document.getElementById('pv-logo').src = url;
+    sizeEl.textContent = '(' + img.naturalWidth + 'px, ' + img.naturalHeight + 'px)';
+    sizeEl.textContent += ' — 저장하기 전입니다';
+  };
+  img.onerror = function () {
+    sizeEl.textContent = '(이미지를 읽지 못했습니다)';
+    URL.revokeObjectURL(url);
+  };
+  img.src = url;
+}
+
+syncSwatch();
+</script>
+{% endblock %}

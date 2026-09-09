@@ -6,6 +6,7 @@ from tot_dashboard.common.notifier import AlertNotifier
 from tot_dashboard.traffic_weather.agents.risk_decision import RiskDecisionAgent
 from tot_dashboard.traffic_weather.agents.semantic_agent import SemanticAgent
 from tot_dashboard.traffic_weather.agents.vlm_situation import VlmSituationAgent
+from tot_dashboard.traffic_weather.knowledge.ontology import TRAFFIC_RISK_CATALOG
 from tot_dashboard.traffic_weather.perception.detection_source import SyntheticDetectionSource
 from tot_dashboard.traffic_weather.perception.rainfall_provider import MockRainfallProvider
 from tot_dashboard.traffic_weather.perception.traffic_tracker import TrafficBehaviorTracker
@@ -24,7 +25,7 @@ def test_synthetic_scenario_runs_end_to_end_and_escalates_with_rain(monkeypatch)
     tracker = TrafficBehaviorTracker(fps=fps, baseline_hint=source.base_speed)
     vlm = VlmSituationAgent(use_vlm=False)
     semantic = SemanticAgent()
-    decider = RiskDecisionAgent()
+    decider = RiskDecisionAgent(TRAFFIC_RISK_CATALOG)
     notifier = AlertNotifier()
     assert notifier.status()["dry_run"] is True
 

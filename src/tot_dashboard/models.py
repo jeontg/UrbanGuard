@@ -72,6 +72,10 @@ class TrafficMetrics(BaseModel):
     t_sec: float
     n_vehicles: int
     mean_speed: float = Field(description="평균 이동속도(px/s)")
+    mean_speed_kmh: float | None = Field(
+        default=None,
+        description="평균 실측 속도(km/h). 지면 캘리브레이션 없으면 None"
+                     "(2026-08-26 — 예전 고정계수 mpp=0.06 가짜값을 대체)")
     speed_drop: float = Field(ge=0, le=1, description="속도급감비 0~1 (1 - 현재/자유흐름)")
     density: float = Field(ge=0, le=1, description="화면 점유 밀도 0~1")
     queue_len: int = Field(ge=0, description="정체 대기열 추정(연속 저속 차량 수)")
@@ -84,6 +88,8 @@ class VehicleObject(BaseModel):
     cls: str = "car"
     bbox: tuple[float, float, float, float]
     speed: float = Field(description="현재 속도(px/s)")
+    speed_kmh: float | None = Field(
+        default=None, description="현재 실측 속도(km/h). 캘리브레이션 없으면 None")
     speed_drop: float = Field(ge=0, le=1, description="자유흐름 대비 감속 0~1")
     age: int = Field(description="추적 지속 프레임 수")
     stalled: bool = False
@@ -96,6 +102,11 @@ class PerceptionState(BaseModel):
     persons: list[tuple[float, float]] = []
     weather: WeatherState
     metrics: TrafficMetrics
+    # 돌발상황(보행자·역주행·사고 의심) — hold 창 안의 활성 사건 목록.
+    # dict 로 담는다(도메인 dataclass를 여기서 임포트하면 순환참조가 됨) —
+    # 실제 형태는 traffic_weather.perception.incident_events.TrafficIncident
+    # .to_dict() 가 정한다.
+    incidents: list[dict] = []
 
 
 class WeatherImpactRisk(BaseModel):

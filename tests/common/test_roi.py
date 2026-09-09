@@ -38,3 +38,32 @@ def test_polygon_mask_and_point_in_polygons_roundtrip():
     inside_point = (float(xs[mid]), float(ys[mid]))
     assert point_in_polygons(inside_point, cfg.road_roi) is True
     assert point_in_polygons((-100, -100), cfg.road_roi) is False
+
+
+# --- scale_polygons (2026-08-22) ---------------------------------------------
+# ROI 는 정지영상 픽셀 좌표로 저장되는데 실제 캡처 해상도가 다를 수 있다.
+def test_scale_polygons_배율을_적용한다():
+    from tot_dashboard.common.roi import scale_polygons
+    out = scale_polygons([[[0, 0], [100, 50]]], (200, 100), (400, 200))
+    assert out == [[[0, 0], [200, 100]]]
+
+
+def test_scale_polygons_크기가_같으면_그대로():
+    from tot_dashboard.common.roi import scale_polygons
+    src = [[[10, 20], [30, 40]]]
+    assert scale_polygons(src, (640, 480), (640, 480)) == src
+
+
+def test_scale_polygons_크기를_모르면_원본을_그대로_돌려준다():
+    """★ 잘못 늘이는 것보다 그대로 두는 편이 낫다."""
+    from tot_dashboard.common.roi import scale_polygons
+    src = [[[10, 20], [30, 40]]]
+    assert scale_polygons(src, (None, None), (640, 480)) == src
+    assert scale_polygons(src, (640, 480), (None, None)) == src
+    assert scale_polygons(src, (0, 0), (640, 480)) == src
+
+
+def test_scale_polygons_빈_입력은_빈_결과():
+    from tot_dashboard.common.roi import scale_polygons
+    assert scale_polygons([], (200, 100), (400, 200)) == []
+    assert scale_polygons(None, (200, 100), (400, 200)) == []

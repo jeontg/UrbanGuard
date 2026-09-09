@@ -2,10 +2,77 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "_comment": "감시 기동. 비정상 종료 시 되살리고, S-01 화면의 「서비스 재기동」 버튼이 이 방식에서만 동작한다(맨 uvicorn 으로 띄우면 내려간 뒤 되살릴 것이 없어 버튼이 잠긴다).",
+      "name": "urbanguard-8033-supervised",
+      "runtimeExecutable": "D:/dev-PoC/UrbanGuard/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "D:/dev-PoC/UrbanGuard/scripts/serve.py",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8033"
+      ],
+      "port": 8033
+    },
+    {
+      "_comment": "상대 경로 항목들은 실행 위치가 flood_t 로 잡히면 그쪽 서비스를 띄운다(실제로 그런 일이 있었다). 이 항목은 절대 경로와 --app-dir 로 UrbanGuard 를 확실히 띄운다.",
+      "name": "urbanguard-8033",
+      "runtimeExecutable": "D:/dev-PoC/UrbanGuard/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "tot_dashboard.service.main:app",
+        "--app-dir",
+        "D:/dev-PoC/UrbanGuard/src",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8033"
+      ],
+      "port": 8033
+    },
+    {
       "name": "tot-dashboard",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "tot_dashboard.service.main:app", "--port", "8031"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "tot_dashboard.service.main:app",
+        "--port",
+        "8031"
+      ],
       "port": 8031
+    },
+    {
+      "name": "tot-dashboard-8000",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "tot_dashboard.service.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "tot-dashboard-tv",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "tot_dashboard.service.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8010"
+      ],
+      "port": 8010,
+      "env": {
+        "TOT_WATER_BACKEND": "torchvision"
+      }
     }
   ]
 }

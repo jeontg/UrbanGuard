@@ -1,0 +1,247 @@
+{# AI 모델 학습 (신규, 2026-08-25) — 침수·교통위험·인파관리·도로 노면 4개
+   도메인의 모델을 관리자가 화면에서 재학습한다.
+
+   왜 만들었나
+     docs/pending_tasks.md A-7(★★ 「재학습·MLOps — 성능 기록 표가 아예
+     없음」)과 「4대 탐지 기능 기술 정리」(2026-08-25)가 확인한 격차 — 교통
+     위험·인파관리는 자체 학습 스크립트조차 없었다 — 를 함께 메운다.
+
+   왜 도메인마다 화면을 새로 만들지 않고 탭으로 묶었나
+     4개 도메인이 "학습 데이터 확인 → 값 정하기 → 실행 → 진행 지켜보기"
+     라는 같은 절차를 따른다. 탭으로 묶으면 절차 자체를 한 번만 익히면 된다.
+     대신 왼쪽 메뉴에서는 각 도메인 그룹에서도 이 화면으로 바로 올 수 있게
+     링크를 둔다(core/auth.py 참고). #}
+{% extends "_layout.html" %}
+{% block title %}AI 모델 학습 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>AI 모델 학습</h2>
+  <p>도메인별 탐지 모델을 자체 데이터로 다시 학습합니다. <b>GPU가 없어 전부
+    CPU로 돌며, 도메인과 무관하게 한 번에 하나만 실행할 수 있습니다</b> —
+    동시에 여러 개를 돌리면 서로 느려질 뿐입니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+<p class="ug-note" style="margin-bottom:16px">⚠ {{ auto_apply_note }}</p>
+
+<nav class="tabs" style="margin-bottom:16px">
+  {% for key, spec in domains.items() %}
+  <a class="tab-btn{% if key == cur_domain %} active{% endif %}"
+     href="/settings/training?domain={{ key }}"
+     style="text-decoration:none;display:inline-block">{{ spec.label }}</a>
+  {% endfor %}
+</nav>
+
+{% set spec = domains[cur_domain] %}
+{% set ds = dataset_status[cur_domain] %}
+
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>{{ spec.label }} — {{ spec.arch_label }}</h3>
+
+  <div class="ug-tablewrap" style="margin-bottom:12px">
+    <table class="ug-table" style="min-width:0">
+      <tbody>
+        <tr><th style="width:150px">학습 데이터</th>
+          <td>
+            {% if ds.ready %}
+            <span class="ug-badge ug-badge--on">준비됨</span>
+            {% for f in ds.found %}
+            <div style="margin-top:4px;font-size:.85rem;color:var(--muted)">
+              <code>{{ f.path }}</code>{% if f.count is not none %} · {{ f.count }}장{% endif %}</div>
+            {% endfor %}
+            {% else %}
+            <span class="ug-badge ug-badge--crit">준비 안 됨</span>
+            <div style="margin-top:4px;font-size:.85rem;color:var(--muted)">
+              다음 위치에 데이터를 준비하십시오 —
+              {% for h in ds.missing_hints %}<code>{{ h }}</code>{% if not loop.last %} / {% endif %}{% endfor %}
+            </div>
+            {% endif %}
+          </td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 진행 중 배너 — 내 도메인이 실행 중이면 전체 로그, 다른 도메인이면
+       "OOO 도메인 진행률 OO%" 한 줄만(2026-08-25, 사용자 요청 — 인파관리
+       탭인데 도로 노면 로그가 그대로 보이는 게 어색하다는 지적). -->
+  <div id="busy-banner" style="{% if not busy %}display:none{% endif %};
+       margin-bottom:12px;padding:10px 12px;border-radius:8px;
+       background:rgba(212,160,23,.14);border:1px solid rgba(212,160,23,.4)">
+    <span id="busy-text">
+      {% if busy and busy.domain == cur_domain %}
+        <b>{{ domains[busy.domain].label }}</b> 학습 실행 중
+        (#{{ busy.id }}, {{ busy.started_by_name }} 시작){% if busy_progress %} — 진행률 {{ busy_progress.percent }}% (에폭 {{ busy_progress.epoch }}/{{ busy_progress.total_epochs }}){% endif %}
+      {% elif busy %}
+        <b>{{ domains[busy.domain].label }}</b> 도메인에서 학습이 진행 중입니다{% if busy_progress %}. 진행률 {{ busy_progress.percent }}% (에폭 {{ busy_progress.epoch }}/{{ busy_progress.total_epochs }}){% endif %}
+      {% endif %}</span>
+    <button id="stop-btn" class="ug-btn" type="button"
+            style="width:auto;padding:4px 12px;margin-left:10px;font-size:.85rem;
+                   {% if not busy or busy.domain != cur_domain %}display:none{% endif %}">중지</button>
+    <pre id="log-tail" style="margin-top:8px;max-height:220px;overflow:auto;
+         padding:8px 10px;background:var(--bg);border:1px solid var(--border);
+         border-radius:6px;font-size:.78rem;white-space:pre-wrap;
+         {% if not busy or busy.domain != cur_domain %}display:none{% endif %}"></pre>
+  </div>
+
+  <form method="post" action="/settings/training/start" id="train-form">
+    <input type="hidden" name="domain" value="{{ cur_domain }}">
+    <div class="ug-cards" style="--ug-gap:12px">
+      {% for f in spec.fields %}
+      <div class="ug-field"><label for="tf-{{ f.key }}">{{ f.label }}</label>
+        {% if f.type == "select" %}
+        <select id="tf-{{ f.key }}" name="{{ f.key }}"
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px">
+          {% for v, l in f.choices %}
+          <option value="{{ v }}" {% if v|string == f.default|string %}selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <input id="tf-{{ f.key }}" name="{{ f.key }}" type="number"
+               value="{{ f.default }}"
+               {% if f.min is not none %}min="{{ f.min }}"{% endif %}
+               {% if f.max is not none %}max="{{ f.max }}"{% endif %}>
+        {% endif %}
+        {% if f.help %}<p style="margin:6px 0 0;font-size:.78rem;
+            color:var(--muted)">{{ f.help }}</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 20px;margin-top:12px"
+            {% if not ds.ready or busy %}disabled{% endif %}>학습 시작</button>
+    {% if busy and busy.domain != cur_domain %}
+    <span style="margin-left:10px;color:var(--muted);font-size:.85rem">
+      다른 도메인 학습이 끝난 뒤 시작할 수 있습니다.</span>
+    {% endif %}
+  </form>
+</div>
+
+<div class="ug-card">
+  <h3>최근 실행 — {{ spec.label }}</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table" id="recent-table">
+      <thead><tr><th>#</th><th>상태</th><th>시작</th><th>실행자</th><th>지표</th></tr></thead>
+      <tbody>
+        {% for r in recent_runs[cur_domain] %}
+        <tr>
+          <td>{{ r.id }}</td>
+          <td>
+            {% if r.status == "running" %}<span class="ug-badge ug-badge--warn">실행 중</span>
+            {% elif r.status == "succeeded" %}<span class="ug-badge ug-badge--on">완료</span>
+            {% elif r.status == "failed" %}<span class="ug-badge ug-badge--crit">실패</span>
+            {% else %}<span class="ug-badge ug-badge--off">중지됨</span>{% endif %}
+          </td>
+          <td>{{ r.started_at.strftime("%m-%d %H:%M") if r.started_at else "" }}</td>
+          <td>{{ r.started_by_name }}</td>
+          <td style="font-size:.82rem;color:var(--muted)">
+            {% if r.metrics %}{% for k, v in r.metrics.items() %}{{ k }}={{ v }} {% endfor %}
+            {% elif r.error %}{{ r.error }}{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" style="color:var(--muted)">아직 실행 이력이 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var DOMAIN = {{ cur_domain | tojson }};
+  // 서버가 처음 그릴 때는 도메인 라벨(예: "도로 노면")을 쓰는데, 폴링
+  // 갱신은 이 매핑이 없어 원시 키("road")를 그대로 찍고 있었다(2026-08-25
+  // 실사용 중 발견 — 교통위험 탭에서 "road 학습 실행 중"으로 보임).
+  var DOMAIN_LABELS = {
+    {% for k, spec in domains.items() %}{{ k | tojson }}: {{ spec.label | tojson }}{% if not loop.last %}, {% endif %}{% endfor %}
+  };
+  var banner = document.getElementById('busy-banner');
+  var text = document.getElementById('busy-text');
+  var stopBtn = document.getElementById('stop-btn');
+  var logTail = document.getElementById('log-tail');
+  var startBtn = document.querySelector('#train-form button[type="submit"]');
+  var timer = null;
+
+  // busy.started_by_name 은 사용자가 지정한 표시 이름이라 innerHTML로
+  // 조립하면 저장형 XSS가 될 수 있다 — <b> 라벨만 실제 DOM 요소로 만들고
+  // 나머지는 텍스트 노드로 붙여 이스케이프가 항상 되게 한다.
+  function setBusyText(labelText, rest) {
+    text.textContent = '';
+    var b = document.createElement('b');
+    b.textContent = labelText;
+    text.appendChild(b);
+    text.appendChild(document.createTextNode(rest));
+  }
+
+  function render(data) {
+    var busy = data.busy;
+    if (busy) {
+      banner.style.display = '';
+      var label = DOMAIN_LABELS[busy.domain] || busy.domain;
+      var mine = (busy.domain === DOMAIN);
+      var p = data.busy_progress;
+      var pctText = p ? '진행률 ' + p.percent + '% (에폭 ' + p.epoch + '/' +
+        p.total_epochs + ')' : '';
+      if (mine) {
+        // 내 도메인 — 전체 로그·중지 버튼에 더해 진행률도 함께 보여준다
+        // (2026-08-25 사용자 요청 — 도메인별 학습에도 진행률 표기).
+        setBusyText(label, ' 학습 실행 중 (#' + busy.id + ', ' +
+          busy.started_by_name + ' 시작)' + (pctText ? ' — ' + pctText : ''));
+        logTail.textContent = data.log_tail || '';
+      } else {
+        // 다른 도메인 — 로그 없이 진행률 한 줄만(2026-08-25 사용자 요청).
+        setBusyText(label, ' 도메인에서 학습이 진행 중입니다' +
+          (pctText ? '. ' + pctText : ''));
+        logTail.textContent = '';
+      }
+      logTail.style.display = mine ? '' : 'none';
+      stopBtn.style.display = mine ? '' : 'none';
+      if (startBtn) startBtn.disabled = true;
+    } else {
+      banner.style.display = 'none';
+      logTail.textContent = '';
+      // 데이터 준비 안 된 도메인은 서버가 이미 disabled 로 내려줬으므로
+      // 여기서는 "실행 중이라 막힌" 경우만 되돌린다.
+      if (startBtn && startBtn.dataset.datasetReady !== '0') startBtn.disabled = false;
+    }
+    // 다음 예약 — 실행 중이면 짧게, 아니면 길게(서버 부담을 줄인다).
+    var delay = busy ? 4000 : 20000;
+    timer = setTimeout(poll, delay);
+  }
+
+  function poll() {
+    fetch('/settings/training/status?domain=' + encodeURIComponent(DOMAIN))
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () { timer = setTimeout(poll, 20000); });
+  }
+
+  if (startBtn) {
+    startBtn.dataset.datasetReady = startBtn.disabled ? '0' : '1';
+  }
+  stopBtn.addEventListener('click', function () {
+    if (!confirm('실행 중인 학습을 중지하시겠습니까? 지금까지 학습한 내용은' +
+                ' 마지막으로 저장된 체크포인트까지만 남습니다.')) return;
+    var body = new URLSearchParams();
+    // 배너에 표시된 실행 번호를 그대로 쓴다(진행 중인 것은 하나뿐이다).
+    fetch('/settings/training/status?domain=' + encodeURIComponent(DOMAIN))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.busy) return;
+        body.set('run_id', data.busy.id);
+        return fetch('/settings/training/stop', { method: 'POST', body: body })
+          .then(function () { location.reload(); });
+      });
+  });
+
+  poll();
+})();
+</script>
+{% endblock %}

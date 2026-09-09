@@ -1,0 +1,125 @@
+{% extends "_layout.html" %}
+{% block title %}이벤트 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>이벤트</h2>
+  <p>도메인과 무관하게 지금 처리해야 할 사건을 한 목록에서 봅니다.</p>
+</div>
+
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+{% if notice %}<p class="ug-error" role="status" style="background:rgba(63,185,80,.14);
+   border-color:rgba(63,185,80,.4);color:#8ee89f">{{ notice }}</p>{% endif %}
+
+<div class="ug-cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+     margin-bottom:16px">
+  {% for key, label, color in [("open","미처리","#e5484d"),
+                               ("progress","처리중","#e8843b"),
+                               ("closed","완료","#3fb950"),
+                               ("auto_held","자동 보류","#8a63d2")] %}
+  <a href="/events?status={{ key }}" style="text-decoration:none">
+    <section class="ug-card" style="{% if sel_status == key %}border-color:var(--accent){% endif %}">
+      <p class="ug-stat" style="color:{{ color }}">{{ counts[key] }}</p>
+      <p class="ug-stat-label">{{ label }}</p>
+    </section>
+  </a>
+  {% endfor %}
+</div>
+
+{% if can_edit_auto_hold %}
+<!-- 이벤트 자동 보류 정책 (2026-09-02 신설) — 정책과 그 효과를 같은
+     화면에서 보게 한다(서버 성능 설정이 서버 운영 화면에 있는 것과
+     같은 원칙). -->
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>자동 보류 정책</h3>
+  <p class="ug-note">재탐지(임계등급 이상)가 아래 시간 넘게 없는 미해결
+    이벤트를 자동으로 <b>「자동 보류」</b>로 옮깁니다 — <b>종결이
+    아닙니다.</b> 언제든 이 화면(「자동 보류」 필터)에서 다시 확인하거나
+    종결할 수 있습니다.</p>
+  <form method="post" action="/events/auto-hold-settings"
+        style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0">
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+        <input type="checkbox" name="enabled" value="1"
+               {% if auto_hold_enabled %}checked{% endif %}>
+        사용
+      </label>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:140px">
+      <label for="f-hold-hours">기준 시간</label>
+      <input id="f-hold-hours" name="hours" type="number" min="1"
+             value="{{ auto_hold_hours|int }}"
+             style="width:100%;padding:11px 12px;background:var(--bg);
+                    color:var(--text);border:1px solid var(--border);
+                    border-radius:8px">
+    </div>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:11px 22px">저장</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="ug-card" style="margin-bottom:16px">
+  <form method="get" action="/events"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:170px;flex:1 1 170px">
+      <label for="f-status">상태</label>
+      <select id="f-status" name="status" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="active" {% if sel_status == "active" %}selected{% endif %}>진행 중 (미처리+처리중)</option>
+        <option value="open" {% if sel_status == "open" %}selected{% endif %}>미처리</option>
+        <option value="progress" {% if sel_status == "progress" %}selected{% endif %}>처리중</option>
+        <option value="closed" {% if sel_status == "closed" %}selected{% endif %}>완료</option>
+        <option value="auto_held" {% if sel_status == "auto_held" %}selected{% endif %}>자동 보류</option>
+        <option value="" {% if sel_status == "" %}selected{% endif %}>전체</option>
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:170px;flex:1 1 170px">
+      <label for="f-domain">도메인</label>
+      <select id="f-domain" name="domain" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in domains %}
+        <option value="{{ v }}" {% if sel_domain == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+  </form>
+</div>
+
+<div class="ug-card">
+  <h3>이벤트 {{ rows|length }}건</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>상태</th><th>등급</th><th>지점</th><th>도메인</th>
+        <th>탐지</th><th>경과</th><th>담당</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for e in rows %}
+      <tr>
+        <td><span class="ug-badge {{ status_badge.get(e.status,'ug-badge--off') }}">
+          {{ status_labels.get(e.status, e.status) }}</span></td>
+        <td><span class="ug-badge {{ level_badge.get(e.level,'ug-badge--off') }}">
+          {{ e.level }}</span>
+          {% if e.peak_level != e.level %}
+          <span style="font-size:.72rem;color:var(--muted)">(최고 {{ e.peak_level }})</span>
+          {% endif %}</td>
+        <td>{{ e.place_name or e.block_id }}</td>
+        <td>{{ domain_labels.get(e.domain, e.domain) }}</td>
+        <td>{{ e.detected_at.strftime("%m-%d %H:%M") }}</td>
+        <td>{{ elapsed(e) }}</td>
+        <td>{{ e.assignee_id or "—" }}</td>
+        <td><a href="/events/{{ e.id }}" style="color:var(--accent);
+               text-decoration:none;font-weight:700">상세 →</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="ug-empty">해당 조건의 이벤트가 없습니다.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

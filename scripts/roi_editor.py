@@ -33,6 +33,16 @@ Controls:
   s                save immediately with everything committed so far
                     (+ the current piece, auto-included if it has >=3 points)
   q / ESC          quit without saving
+
+⚠️ 2026-08-22 — 이 결과는 ``configs/roi/<block-id>.json`` 파일에만 저장되며,
+운영 서비스(웹 ROI 편집기·상시 침수 탐지 파이프라인)에는 **자동으로 반영되지
+않습니다.** 웹 ROI 편집기(S-81, ``/settings/cameras/{id}/roi``)는 DB
+(``camera_rois``)만 보고, ``service/runner.py`` 도 이제 DB를 먼저 보고
+(``common.roi.load_roi_for_camera()``) 이 파일은 DB에 값이 없을 때만
+폴백으로 읽습니다. 실서비스에 반영하려면 웹 편집기를 쓰거나,
+``scripts/backfill_roi_files_to_db.py`` 로 파일 값을 DB로 옮기십시오
+(단, DB에 이미 값이 있으면 그 스크립트는 덮어쓰지 않습니다 — 웹에서 다시
+그린 뒤라면 이 도구의 결과가 아니라 DB 값이 우선입니다).
 """
 from __future__ import annotations
 

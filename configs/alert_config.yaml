@@ -1,27 +1,61 @@
-# Alert engine configuration (Tab 4 + Section 9 of the master plan).
-# Alert levels are 1..5 (Level 0 is never used).
+# 알림 규칙 설정 (S-83) — 침수 5단계 판정
 #
-# The engine is rule-based and uses water_area_ratio inside the road ROI as the
-# primary signal, combined with expansion trend, low-point presence, lane-line
-# crossing, and traffic / person context. Tune thresholds per camera.
+# 알림 단계는 1~5 입니다 (0단계는 쓰지 않습니다).
+# 주 신호는 **도로 ROI 안에서 물이 덮은 면적 비율**이며, 확산 추세·저지대
+# 침수·차선 침범·차량/보행자 상황을 함께 봅니다.
+#
+# ⚠️ 근거 표기
+#     [외부] = 법령·지침·공표 기준에 근거 (출처 병기)
+#     [자체] = 개발사가 시범 영상 관찰로 정한 값
+#     [환산불가] = 외부 기준은 있으나 **단위가 달라 그대로 옮길 수 없는** 값
+#   근거 정리 문서: docs/202608151713/threshold_rationale.md (v2)
+#
+# ═══════════════════════════════════════════════════════════════════════
+#  ★ 대조한 외부 기준 — 전부 「침수심(cm)」 기준입니다
+# ═══════════════════════════════════════════════════════════════════════
+#  국내
+#    · 지하차도 통제 수위 15cm → **5cm** 강화
+#      (행정안전부 여름철 자연재난 사전대비 범정부 TF, 2026-05 보도)
+#    · 침수 시작된 지하차도 진입 금지 — 국민재난안전포털 자연재난행동요령
+#  국외 (미국 NWS/FEMA "Turn Around, Don't Drown")
+#    · **15cm(6인치)**  : 대부분 차량이 노면 접지력을 잃기 시작
+#    · **30cm(12인치)** : 흐르는 물이 소형차를 밀어냄
+#    · **45~60cm**      : 트럭·SUV 등 대형차도 밀려남 (문 아래 도달 = 부력 우위)
+#    · 유속 약 6.4km/h 만으로도 대부분 승용차를 밀어냄
+#
+#  ⚠️ **우리는 침수심을 재지 못합니다.** CCTV 한 대의 2차원 화면에서는
+#     깊이를 알 수 없어 「면적 비율」만 봅니다. 위 기준을 그대로 옮길 수
+#     없으며, 아래 값은 **[자체] 관찰값**입니다.
+#
+#  ⇒ 지점별 「면적 비율 ↔ 침수심」 대응표를 만드는 것이 남은 과제입니다.
+#     방법 ① 화면 안에 수위표(스타프) 설치  ② 수위 센서 연계
+#     대응표가 생기면 아래 목표 대응으로 재설정하십시오.
+#
+#  [목표 대응] 캘리브레이션 후 각 단계가 뜻해야 하는 침수심
+#     2단계 관심   ≒ 노면이 젖기 시작 (침수심 0~5cm 미만)
+#     3단계 주의   ≒ **5cm**  — 국내 지하차도 통제 기준 도달
+#     4단계 위험   ≒ **15cm** — 차량 접지력 상실 시작 (NWS/FEMA)
+#     5단계 통제권고 ≒ **30cm** — 소형차 부유 시작 (NWS/FEMA)
+# ═══════════════════════════════════════════════════════════════════════
 
-# --- water_area_ratio thresholds (fraction of road ROI covered by water) ---
-ratio_watch: 0.02       # >= this -> at least Watch (L2)
-ratio_caution: 0.08     # >= this -> at least Caution (L3)
-ratio_danger: 0.20      # >= this -> at least Danger (L4)
-ratio_shutdown: 0.35    # >= this -> Road Shutdown Recommended (L5)
+# --- 물 면적 비율 임계값 (도로 ROI 대비) ---------------------------------
+ratio_watch: 0.02       # [환산불가·자체] 최소 2단계(관심). 목표 대응 침수심 0~5cm 미만
+ratio_caution: 0.08     # [환산불가·자체] 최소 3단계(주의). 목표 대응 5cm — 국내 지하차도 통제 기준
+ratio_danger: 0.20      # [환산불가·자체] 최소 4단계(위험). 목표 대응 15cm — 차량 접지력 상실(NWS/FEMA)
+ratio_shutdown: 0.35    # [환산불가·자체] 5단계(통제 권고). 목표 대응 30cm — 소형차 부유(NWS/FEMA)
 
-# --- water expansion (ratio increase per processed frame, ~per second) ---
-expansion_rate_rising: 0.01   # >= this counts as "water is expanding"
+# --- 물 확산 속도 (처리 프레임당 면적비 증가, 약 초당) --------------------
+expansion_rate_rising: 0.01   # [자체] 초당 면적비가 이 이상 늘면 「번지는 중」으로 봄
 
-# --- persistence: a condition must hold this many processed frames to escalate ---
-# At 1 FPS, 3 frames ~= 3 seconds. Prevents one-frame false-positive panic.
-persistence_frames: 3
+# --- 지속 프레임 (이만큼 연속돼야 단계를 올림) ---------------------------
+persistence_frames: 3   # [자체] 이만큼 연속돼야 단계 상승(1FPS 기준 3초). 한 프레임 오탐으로 경보가 튀는 것을 막음
 
-# --- traffic / object context that can push the level up ---
-stopped_speed_px: 2.0         # avg vehicle pixel speed below this = "stopped"
-slow_speed_px: 8.0            # below this (and above stopped) = "slow"
-jam_min_vehicles: 3           # >= this many near-stationary vehicles = jam candidate
+# --- 차량·보행자 상황 (단계를 올릴 수 있는 보조 신호) --------------------
+# ⚠️ 픽셀 기준 속도라 카메라 화각·해상도에 따라 의미가 달라집니다.
+#    지점별 조정이 필수이며, 전 지점에 같은 값을 쓰는 현재 상태는 정확하지 않습니다.
+stopped_speed_px: 2.0         # [자체] 이보다 느리면 「정지」
+slow_speed_px: 8.0            # [자체] 이보다 느리면(정지보다는 빠르면) 「서행」
+jam_min_vehicles: 3           # [자체] 이만큼 정체 차량이 모이면 정체 후보
 
-# --- de-escalation smoothing: how many calm frames before the level drops ---
-cooldown_frames: 3
+# --- 하향 스무딩 (몇 프레임 잠잠해야 단계를 내릴지) ----------------------
+cooldown_frames: 3   # [자체] 이만큼 잠잠해야 단계 하강. 하강을 더 느리게 두자는 의견이 있어 재검토 대상

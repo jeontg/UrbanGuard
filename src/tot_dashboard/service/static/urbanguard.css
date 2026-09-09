@@ -1,0 +1,521 @@
+/* UrbanGuard 제품 셸 — 로그인 / 2단계 메뉴 레이아웃 / 관리 화면.
+ *
+ * 기존 관제 패널(styles.css)은 그대로 두고, 그 위를 감싸는 제품 껍데기만
+ * 여기서 정의한다. 색상 변수는 styles.css 의 :root 를 그대로 물려받는다.
+ *
+ * 반응형 기준 (docs/ui_design_spec.md 6절):
+ *   1600px+  관제 PC     — 사이드바 고정, 정보 밀도 우선
+ *   1200px+  노트북      — 사이드바 축소
+ *   1024px-  태블릿      — 사이드바를 서랍(drawer)으로 전환
+ *   640px-   모바일      — 단일 열, 핵심 지표 우선
+ */
+
+:root {
+  --ug-sidebar-w: 232px;
+  --ug-topbar-h: 56px;
+  --ug-gap: 16px;
+  --ug-radius: 10px;
+}
+
+/* ---------- 로그인 (S-00) ---------- */
+.ug-login-wrap {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.ug-login {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--ug-radius);
+  padding: clamp(24px, 5vw, 40px);
+}
+.ug-login h1 {
+  font-size: clamp(1.15rem, 3vw, 1.4rem);
+  margin: 0 0 4px;
+  line-height: 1.35;
+}
+/* 여백을 잘라낸 tight 판을 쓰므로 지정한 높이가 곧 실제 크기가 된다 */
+.ug-login-logo {
+  display: block;
+  height: 54px;
+  width: auto;
+  max-width: 100%;
+  margin: 0 0 22px;
+}
+.ug-field { margin-bottom: 14px; }
+.ug-field label {
+  display: block;
+  font-size: 0.86rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.ug-field input {
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.ug-field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.ug-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ug-btn:hover { filter: brightness(1.08); }
+.ug-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.ug-btn--ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  width: auto;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+/* <details class="ug-popover"> 로 띄우는 표 안 팝오버(CCTV 관리의 「탐지
+   지정」·「보정」·「수정」 등)의 닫기(✕) 버튼. summary 를 다시 클릭하는
+   것 말고는 닫을 방법이 없던 문제(2026-08-27 신고)를 시정 — 바깥 클릭·
+   Esc 로도 닫히지만(_layout.html 전역 스크립트), 눈에 보이는 명시적
+   버튼도 함께 둔다. */
+.ug-popover-x {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.ug-popover-x:hover { background: var(--border); color: var(--text); }
+.ug-popover-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* <details class="ug-popover"> 로 뜨는 표 안 팝오버의 실제 떠 있는 상자.
+   2026-08-27 — "어두운 배경에서 팝업 테두리가 구분되지 않는다"는 신고로
+   `--border`(패널과 18단계 차이) 대신 `--border-strong`(60단계 차이,
+   core/settings.py::derive_theme)을 쓴다. 그림자도 더해 배경색이 무엇이든
+   (밝든 어둡든) 화면 위로 뜬 상자라는 것이 항상 드러나게 한다. */
+.ug-popover-panel {
+  background: var(--panel);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .35), 0 2px 8px rgba(0, 0, 0, .28);
+  padding: 14px;
+}
+
+.ug-note { color: var(--muted); font-size: 0.8rem; margin-top: 16px; }
+.ug-error {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(229, 72, 77, 0.14);
+  border: 1px solid rgba(229, 72, 77, 0.4);
+  color: #ffb4b6;
+  font-size: 0.88rem;
+}
+
+/* ---------- 앱 셸 ---------- */
+.ug-shell {
+  display: grid;
+  grid-template-columns: var(--ug-sidebar-w) 1fr;
+  grid-template-rows: var(--ug-topbar-h) 1fr;
+  grid-template-areas: "brand top" "nav main";
+  min-height: 100dvh;
+}
+.ug-brandbar {
+  grid-area: brand;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+/* 사이드바 폭(--ug-sidebar-w)에서 좌우 여백을 뺀 만큼 꽉 채운다.
+   UI 전용 로고는 여백을 잘라낸 4.79:1 이라, 폭 204px 일 때 높이 43px —
+   헤더 56px 안에 위아래 여백 6px 남기고 들어간다. */
+.ug-brandbar .ug-logo {
+  width: 100%;
+  height: auto;
+  /* 헤더보다 커지지 않도록 상한을 둔다 */
+  max-height: calc(var(--ug-topbar-h) - 14px);
+  object-fit: contain;
+  object-position: left center;
+}
+.ug-topbar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+.ug-topbar .ug-title {
+  font-weight: 700;
+  font-size: 0.98rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ug-topbar .ug-spacer { flex: 1 1 auto; }
+.ug-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ug-role {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(79, 140, 255, 0.16);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.76rem;
+}
+/* 머리줄은 붙박이로 둔다. 아래 사이드바가 sticky 로 매달릴 기준선이 된다. */
+.ug-brandbar,
+.ug-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
+}
+.ug-nav {
+  grid-area: nav;
+  border-right: 1px solid var(--border);
+  padding: 12px 10px 32px;
+  /* 메뉴가 화면보다 길다(36개 화면 기준 1500px 남짓). 높이를 묶어 두지 않으면
+     grid 행이 내용만큼 늘어나 overflow-y 가 아예 동작하지 않고, 아래쪽 메뉴가
+     화면 밖으로 밀려 본문째로 스크롤해야만 닿는다. align-self 로 늘어나는 것을
+     막고 화면 높이에 맞춰 사이드바 안에서만 스크롤시킨다. */
+  position: sticky;
+  top: var(--ug-topbar-h);
+  align-self: start;
+  max-height: calc(100dvh - var(--ug-topbar-h));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ug-nav-group { margin-bottom: 14px; }
+.ug-nav-group > .ug-nav-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.ug-nav a {
+  display: block;
+  padding: 8px 10px 8px 27px;
+  border-radius: 7px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.ug-nav a:hover { background: rgba(255, 255, 255, 0.05); }
+.ug-nav a[aria-current="page"] {
+  background: rgba(79, 140, 255, 0.16);
+  color: var(--accent);
+  font-weight: 700;
+}
+.ug-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ug-main { grid-area: main; padding: var(--ug-gap) 20px 40px; min-width: 0; }
+
+/* ---------- S-01 배경지도 (ugmap.js) ---------- */
+.ug-tilemap {
+  position: relative;
+  overflow: hidden;
+  height: clamp(240px, 38vh, 420px);   /* 화면이 작아도 지도 구실은 해야 한다 */
+  border: 1px solid var(--border);
+  border-radius: var(--ug-radius);
+  background: var(--bg);
+  cursor: grab;
+  touch-action: none;                  /* 끌기와 브라우저 스크롤이 싸우지 않게 */
+}
+.ug-tilemap.is-dragging { cursor: grabbing; }
+.ug-tilemap-pane img {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.ug-tilemap-markers { position: absolute; inset: 0; pointer-events: none; }
+.ug-tilemap-pin {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  margin: -7px 0 0 -7px;               /* 좌표가 핀의 중심에 오도록 */
+  border: 2px solid rgba(15, 20, 32, 0.85);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+  pointer-events: auto;
+}
+.ug-tilemap-ctrl {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ug-tilemap-ctrl button {
+  width: 30px;
+  height: 30px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text);
+  background: rgba(15, 20, 32, 0.82);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.ug-tilemap-attr {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  max-width: 100%;
+  padding: 1px 6px;
+  font-size: 0.66rem;
+  color: var(--muted);
+  background: rgba(15, 20, 32, 0.72);
+  border-radius: 5px;
+}
+
+/* 햄버거는 태블릿 이하에서만 보인다 */
+.ug-menu-btn {
+  display: none;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 1.05rem;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+/* ---------- 공통 조각 ---------- */
+.ug-page-head { margin: 4px 0 18px; }
+.ug-page-head h2 { margin: 0 0 4px; font-size: clamp(1.1rem, 2.4vw, 1.35rem); }
+.ug-page-head p { margin: 0; color: var(--muted); font-size: 0.87rem; }
+
+.ug-cards {
+  display: grid;
+  gap: var(--ug-gap);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.ug-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--ug-radius);
+  padding: 16px 18px;
+}
+.ug-card h3 { margin: 0 0 10px; font-size: 0.95rem; }
+.ug-stat { font-size: clamp(1.6rem, 4vw, 2.1rem); font-weight: 800; line-height: 1.1; }
+.ug-stat-label { color: var(--muted); font-size: 0.82rem; margin-top: 2px; }
+
+/* ---------- 통합 상황판 지도 (S-01 ②영역) ----------
+ * 외부 지도 타일을 쓰지 않는다 — 폐쇄망에서 뜨지 않기 때문(설계서 9-4절).
+ * 위경도를 백분율 위치로 정규화해 마커만 얹는다. */
+.ug-map {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ug-map svg { display: block; width: 100%; height: 100%; }
+
+.ug-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+  color: var(--text);
+  white-space: nowrap;
+  padding: 2px 5px;
+  border-radius: 6px;
+}
+.ug-pin:hover { background: rgba(127, 127, 127, 0.18); }
+.ug-pin:focus-visible { outline: 2px solid var(--accent); }
+.ug-pin-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.ug-pin-label { font-size: 0.72rem; color: var(--muted); }
+/* 주의 이상인 지점은 눈에 먼저 들어와야 한다 */
+.ug-pin--alert .ug-pin-dot { width: 15px; height: 15px; }
+.ug-pin--alert .ug-pin-label { color: var(--text); font-weight: 700; }
+
+.ug-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.ug-map-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
+/* 폭이 큰 표는 본문을 밀지 않도록 자기 안에서 가로 스크롤한다 */
+.ug-tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ug-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 560px; }
+.ug-table th, .ug-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.ug-table th { color: var(--muted); font-weight: 700; font-size: 0.8rem; }
+.ug-table tbody tr:hover { background: rgba(255, 255, 255, 0.035); }
+
+.ug-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.ug-badge--on { background: rgba(63, 185, 80, 0.16); color: #6fdc8c; }
+.ug-badge--off { background: rgba(147, 160, 187, 0.16); color: var(--muted); }
+.ug-badge--warn { background: rgba(212, 160, 23, 0.18); color: #e8c35c; }
+.ug-badge--crit { background: rgba(229, 72, 77, 0.18); color: #ff9a9c; }
+
+.ug-empty { color: var(--muted); padding: 26px 4px; font-size: 0.9rem; }
+
+/* ---------- 반응형 ---------- */
+@media (max-width: 1400px) {
+  :root { --ug-sidebar-w: 208px; }
+}
+
+/* 태블릿 이하 — 사이드바를 서랍으로 */
+@media (max-width: 1024px) {
+  .ug-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--ug-topbar-h) 1fr;
+    grid-template-areas: "top" "main";
+  }
+  .ug-brandbar { display: none; }
+  .ug-menu-btn { display: inline-block; }
+  .ug-nav {
+    position: fixed;
+    inset: var(--ug-topbar-h) auto 0 0;
+    width: min(280px, 82vw);
+    background: var(--panel);
+    transform: translateX(-100%);
+    transition: transform 0.18s ease-out;
+    z-index: 40;
+  }
+  .ug-shell[data-nav="open"] .ug-nav { transform: none; }
+  .ug-scrim {
+    position: fixed;
+    inset: var(--ug-topbar-h) 0 0 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 30;
+  }
+  .ug-main { padding: var(--ug-gap) 16px 40px; }
+}
+
+/* 노트북 이하에서는 지도와 큐를 세로로 쌓는다 */
+@media (max-width: 1200px) {
+  .ug-board { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 640px) {
+  :root { --ug-gap: 12px; }
+  .ug-cards { grid-template-columns: 1fr; }
+  /* 모바일에서는 지도를 생략한다 — 작은 화면의 지도는 정보량 대비 자리만
+     차지하고, 같은 정보를 이벤트 큐가 텍스트로 제공한다(설계서 9-2절). */
+  .ug-map, .ug-map-legend { display: none; }
+  .ug-main { padding: 12px 12px 32px; }
+  .ug-topbar { padding: 0 12px; gap: 8px; }
+  .ug-user .ug-user-dept { display: none; }
+  .ug-login { padding: 22px 18px; }
+}
+
+/* 동작 최소화를 선호하는 사용자 — 접근성 */
+@media (prefers-reduced-motion: reduce) {
+  .ug-nav { transition: none; }
+}
+
+/* ---------- 사이드바 접기 (데스크톱) ----------
+   관제 화면은 지도·영상처럼 가로를 많이 쓰는 것이 많아, 메뉴를 접어 본문을
+   넓히고 싶을 때가 있다. 접어도 **완전히 감추지는 않는다** — 폭을 줄여
+   아이콘만 남기면 어느 그룹인지는 계속 보이고, 다시 펴는 버튼도 제자리에
+   있다. 상태는 브라우저에 저장해 화면을 옮겨도 유지된다. */
+.ug-shell[data-rail="on"] { --ug-sidebar-w: 56px; }
+.ug-shell[data-rail="on"] .ug-brandbar { padding: 0 8px; }
+.ug-shell[data-rail="on"] .ug-nav { padding: 12px 6px 32px; }
+/* 접힌 상태에서는 글자를 숨기고 아이콘만 남긴다. */
+.ug-shell[data-rail="on"] .ug-nav-head { justify-content: center; padding: 6px 0; }
+.ug-shell[data-rail="on"] .ug-nav-head span:last-child { display: none; }
+.ug-shell[data-rail="on"] .ug-nav a {
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 0;            /* 글자는 감추되 접근성 텍스트는 DOM 에 남긴다 */
+  border-radius: 6px;
+}
+/* 항목이 무엇인지 알 수 있게 작은 점을 남긴다 — 빈 칸만 늘어놓으면
+   몇 번째 항목인지 셀 수 없다. */
+.ug-shell[data-rail="on"] .ug-nav a::before {
+  content: "·";
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--muted);
+}
+.ug-shell[data-rail="on"] .ug-nav a[aria-current="page"]::before { color: var(--accent); }
+
+.ug-rail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px; height: 30px;
+  margin-right: 6px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  flex: none;
+}
+.ug-rail-btn:hover { color: var(--text); border-color: var(--accent); }
+.ug-rail-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* 태블릿 이하에서는 사이드바가 이미 서랍이라 접기 버튼이 의미가 없다. */
+@media (max-width: 1024px) {
+  .ug-rail-btn { display: none; }
+  .ug-shell[data-rail="on"] { --ug-sidebar-w: 232px; }
+}

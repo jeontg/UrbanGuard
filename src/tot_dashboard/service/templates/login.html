@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>로그인 — {{ org_name }} UrbanGuard</title>
+<link rel="icon" href="/static/brand/urbanguard_icon_32.png" sizes="32x32">
+<link rel="icon" href="/static/brand/urbanguard_icon_16.png" sizes="16x16">
+<link rel="apple-touch-icon" href="/static/brand/urbanguard_icon_128.png">
+<link rel="stylesheet" href="/static/styles.css?v={{ styles_css_version }}">
+<link rel="stylesheet" href="/static/urbanguard.css?v={{ ug_css_version }}">
+</head>
+<body>
+<main class="ug-login-wrap">
+  <form class="ug-login" method="post" action="/login" autocomplete="on">
+    <img src="{{ login_logo_url }}" alt="{{ org_name }} {{ solution_name }}"
+         class="ug-login-logo">
+    <h1>{{ org_name }}<br>{{ solution_name }}</h1>
+    <p class="ug-note" style="margin:6px 0 20px">등록된 계정으로 로그인하세요.</p>
+
+    {% if error %}
+    <p class="ug-error" role="alert">{{ error }}</p>
+    {% endif %}
+
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="ug-field">
+      <label for="login_id">아이디</label>
+      <input id="login_id" name="login_id" type="text" required autofocus
+             autocomplete="username" inputmode="latin">
+    </div>
+    <div class="ug-field">
+      <label for="password">비밀번호</label>
+      <input id="password" name="password" type="password" required
+             autocomplete="current-password">
+    </div>
+    <button class="ug-btn" type="submit">로그인</button>
+    <p class="ug-note">비밀번호를 {{ max_failed }}회 틀리면 계정이 일시 잠깁니다.
+      계정 발급·잠금 해제는 시스템관리자에게 문의하세요.</p>
+    <p class="ug-note" style="text-align:center">
+      계정이 없으신가요? <a href="/signup">가입 신청</a></p>
+  </form>
+</main>
+</body>
+</html>

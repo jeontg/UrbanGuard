@@ -11,7 +11,6 @@ from tot_dashboard.common.video_io import read_first_frame
 from tot_dashboard.flood.flood_metrics_engine import FloodMetricsEngine
 from tot_dashboard.flood.risk_engine import RiskEngine, RiskPredictor, write_back
 from tot_dashboard.flood.water_segmentation import segment_water
-from tot_dashboard.models import TrafficMetrics, TrafficState
 
 SAMPLE_VIDEO = PROJECT_ROOT / "data" / "samples" / "flood" / "underpath_flood1.mp4"
 ROI_PATH = PROJECT_ROOT / "configs" / "roi" / "UNDERPATH-01.json"
@@ -27,11 +26,9 @@ def test_flood_metrics_engine_end_to_end_single_frame():
 
     roi = load_roi_config(ROI_PATH)
     engine = FloodMetricsEngine(roi=roi)
-    traffic = TrafficMetrics(
-        t_sec=0.0, n_vehicles=0, mean_speed=0.0, speed_drop=0.0,
-        density=0.0, queue_len=0, stalled=0, state=TrafficState.free,
-    )
-    m = engine.update(water, vehicles=[], person_points=[], traffic=traffic,
+    # ★ 2026-08-21: flood/traffic 도메인 분리로 update()가 더 이상 traffic
+    # (TrafficMetrics)을 받지 않는다 — 순수 침수 지표만 계산한다.
+    m = engine.update(water, vehicles=[], person_points=[],
                       frame_number=0, timestamp_sec=0.0)
     assert 0.0 <= m.water_area_ratio <= 1.0
     assert m.roi_defined is True

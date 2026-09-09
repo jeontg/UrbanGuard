@@ -1,0 +1,102 @@
+{% extends "_layout.html" %}
+{% block title %}{{ spec.title }} — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>{{ spec.title }} <span style="font-size:.8rem;color:var(--muted);
+      font-weight:400">{{ spec.sid }}</span></h2>
+  <p>{{ spec.desc }}</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+{% if not exists %}
+<div class="ug-card"><p class="ug-empty">설정 파일이 없습니다: <code>{{ path_name }}</code></p></div>
+{% else %}
+
+<form method="post">
+  <div class="ug-card" style="margin-bottom:16px">
+    <h3>편집 가능한 값 {{ fields|length }}개
+      <span style="font-weight:400;font-size:.8rem;color:var(--muted)">
+        configs/{{ path_name }}</span></h3>
+
+    {% if not can_edit %}
+    <p class="ug-note">조회 권한만 있습니다. 변경은 담당 권한자에게 요청하세요.</p>
+    {% endif %}
+
+    <div class="ug-cards" style="--ug-gap:12px;
+         grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+      {% for f in fields %}
+      <div class="ug-field" style="margin:0">
+        <label for="f_{{ f.key }}">{{ f.key }}</label>
+        {% if f.type == 'bool' %}
+        <select id="f_{{ f.key }}" name="f_{{ f.key }}"
+                {% if not can_edit %}disabled{% endif %}
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);border-radius:8px">
+          <option value="true" {% if f.value %}selected{% endif %}>true</option>
+          <option value="false" {% if not f.value %}selected{% endif %}>false</option>
+        </select>
+        {% else %}
+        <input id="f_{{ f.key }}" name="f_{{ f.key }}" value="{{ f.value }}"
+               {% if f.type == 'number' %}inputmode="decimal"{% endif %}
+               {% if not can_edit %}disabled{% endif %}>
+        {% endif %}
+        {% if f.comment %}
+        <p style="margin:5px 0 0;font-size:.76rem;color:var(--muted)">{{ f.comment }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if can_edit %}
+    <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="ug-btn" type="submit" style="width:auto;padding:11px 26px">저장</button>
+      <span class="ug-note" style="margin:0">
+        저장 전 자동으로 백업됩니다. 반영하려면 서비스 재시작이 필요합니다.</span>
+    </div>
+    {% endif %}
+  </div>
+</form>
+
+{% if readonly %}
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>읽기 전용 항목 {{ readonly|length }}개</h3>
+  <p class="ug-note" style="margin-top:0">
+    리스트·중첩 구조는 화면에서 편집하지 않습니다. 줄 단위 치환으로 안전하게
+    다룰 수 없어, 잘못 건드리면 파일이 깨지기 때문입니다.
+    변경이 필요하면 <code>configs/{{ path_name }}</code> 를 직접 수정하세요.</p>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr><th>키</th><th>값</th></tr></thead>
+      <tbody>
+      {% for r in readonly %}
+      <tr><td>{{ r.key }}</td>
+          <td style="white-space:normal;font-size:.82rem">{{ r.value }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if backups %}
+<div class="ug-card">
+  <h3>최근 백업 {{ backups|length }}개</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr><th>파일</th><th>시각</th></tr></thead>
+      <tbody>
+      {% for b in backups %}
+      <tr><td>{{ b.name }}</td><td>{{ b.at.strftime("%Y-%m-%d %H:%M:%S") }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="ug-note">백업은 <code>configs/_backup/</code> 에 최근 20개까지 보관됩니다.
+    되돌리려면 해당 파일을 원래 이름으로 복사한 뒤 서비스를 재시작하세요.</p>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

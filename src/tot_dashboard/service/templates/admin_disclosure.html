@@ -1,0 +1,406 @@
+{# S-94 영상 반출 관리대장 — 누구에게 어떤 영상을 언제 왜 내줬는가.
+
+   이 화면이 하는 일
+     관제 영상을 밖으로 내주면 개인정보를 제3자에게 제공한 것이 된다. 그 사실을
+     법이 대장으로 남기라고 한다. 종이로 적으면 연말 점검 때 「그 건은 누가
+     처리했더라」가 반복되므로 여기서 적는다.
+
+   삭제 버튼이 없는 이유
+     대장은 감사 자료다. 잘못 적었으면 「정정」으로 사유를 남기고 새 줄을 만든다.
+     원본은 흐리게 남고 정정본이 옆에 붙는다.
+
+   파기 지연
+     내준 사본은 목적을 다하면 파기돼야 한다. 종이 대장에서 가장 자주 비는 칸이
+     이것이라 요약 맨 앞에 뒀다. #}
+{% extends "_layout.html" %}
+{% block title %}영상 반출 관리대장 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>영상 반출 관리대장</h2>
+  <p>관제 영상을 외부에 제공한 내역입니다. 개인정보 보호법과 통합관제센터 운영
+    규정이 요구하는 기록이라 <b>삭제할 수 없습니다</b> — 잘못 적었으면 정정
+    사유를 남기고 새 줄을 만듭니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+<!-- 요약 -->
+<div class="ug-cards" style="margin-bottom:16px">
+  <div class="ug-card">
+    <h3 style="margin:0 0 6px;font-size:.86rem;color:var(--muted)">파기 지연</h3>
+    <p style="margin:0;font-size:1.7rem;font-variant-numeric:tabular-nums;
+              {% if summary.overdue %}color:#ff9a9c{% endif %}">
+      {{ summary.overdue }}<span style="font-size:.9rem">건</span></p>
+    <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">
+      {% if summary.overdue %}
+      <a href="/admin/disclosure?overdue=1" style="color:#ff9a9c">지난 건 보기</a>
+      {% else %}기한 지난 건 없음{% endif %}</p>
+  </div>
+  <div class="ug-card">
+    <h3 style="margin:0 0 6px;font-size:.86rem;color:var(--muted)">최근 30일</h3>
+    <p style="margin:0;font-size:1.7rem;font-variant-numeric:tabular-nums">
+      {{ summary.month }}<span style="font-size:.9rem">건</span></p>
+    <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">한 달 반출 건수</p>
+  </div>
+  <div class="ug-card">
+    <h3 style="margin:0 0 6px;font-size:.86rem;color:var(--muted)">비식별 미처리</h3>
+    <p style="margin:0;font-size:1.7rem;font-variant-numeric:tabular-nums">
+      {{ summary.unmasked }}<span style="font-size:.9rem">건</span></p>
+    <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">
+      제3자 마스킹 없이 제공</p>
+  </div>
+  <div class="ug-card">
+    <h3 style="margin:0 0 6px;font-size:.86rem;color:var(--muted)">전체</h3>
+    <p style="margin:0;font-size:1.7rem;font-variant-numeric:tabular-nums">
+      {{ summary.total }}<span style="font-size:.9rem">건</span></p>
+    <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">대장 총 줄 수</p>
+  </div>
+</div>
+
+{% if can_edit %}
+<!-- 등록 · 정정 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <h3 id="form-title">반출 기록 등록</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:0 0 12px">
+    실제 반출 처리는 담당자가 하고 여기에는 그 <b>사실</b>을 적습니다. 근거를
+    적을 수 없는 반출은 등록되지 않습니다.</p>
+  <form method="post" action="/admin/disclosure/create" id="d-form">
+    <input type="hidden" name="origin_id" id="d-origin" value="">
+
+    <div class="ug-field" id="d-reason-wrap" style="display:none">
+      <label for="d-reason">정정 사유 <span style="color:#ff9a9c">*</span></label>
+      <input id="d-reason" name="correction_reason" autocomplete="off"
+             placeholder="무엇이 잘못 적혔고 왜 고치는지">
+    </div>
+
+    <div class="ug-cards" style="--ug-gap:12px">
+      <div class="ug-field"><label for="d-when">요청 일시</label>
+        <input id="d-when" name="requested_at" type="datetime-local"
+               value="{{ form.get('requested_at', '') }}"></div>
+      <div class="ug-field"><label for="d-org">요청 기관 <span style="color:#ff9a9c">*</span></label>
+        <input id="d-org" name="requester_org" required autocomplete="off"
+               placeholder="○○경찰서 수사과"
+               value="{{ form.get('requester_org', '') }}"></div>
+      <div class="ug-field"><label for="d-name">요청자</label>
+        <input id="d-name" name="requester_name" autocomplete="off"
+               placeholder="직위·성명"
+               value="{{ form.get('requester_name', '') }}"></div>
+      <div class="ug-field"><label for="d-contact">연락처</label>
+        <input id="d-contact" name="requester_contact" autocomplete="off"
+               placeholder="사무실 번호 또는 공문 번호"
+               value="{{ form.get('requester_contact', '') }}"></div>
+    </div>
+
+    <div class="ug-field"><label for="d-basis">반출 근거 <span style="color:#ff9a9c">*</span></label>
+      <input id="d-basis" name="legal_basis" required autocomplete="off"
+             list="basis-list" placeholder="수사기관 공문 (형사소송법) · 공문번호"
+             value="{{ form.get('legal_basis', '') }}">
+      <datalist id="basis-list">
+        {% for b in basis_presets %}<option value="{{ b }}">{% endfor %}
+      </datalist></div>
+
+    <div class="ug-field"><label for="d-purpose">이용 목적</label>
+      <textarea id="d-purpose" name="purpose" rows="2"
+                placeholder="어떤 사건·업무에 쓰이는지"
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px;font:inherit">{{ form.get('purpose', '') }}</textarea></div>
+
+    <div class="ug-cards" style="--ug-gap:12px">
+      <div class="ug-field"><label for="d-cams">대상 지점</label>
+        <input id="d-cams" name="camera_ids" autocomplete="off" list="cam-list"
+               placeholder="지점 ID (여러 개는 쉼표)"
+               value="{{ form.get('camera_ids', '') }}">
+        <datalist id="cam-list">
+          {% for k, n in cam_labels.items() %}
+          <option value="{{ k }}">{{ n }}</option>{% endfor %}
+        </datalist></div>
+      <div class="ug-field"><label for="d-pf">촬영 기간 시작</label>
+        <input id="d-pf" name="period_from" type="datetime-local"
+               value="{{ form.get('period_from', '') }}"></div>
+      <div class="ug-field"><label for="d-pt">촬영 기간 종료</label>
+        <input id="d-pt" name="period_to" type="datetime-local"
+               value="{{ form.get('period_to', '') }}"></div>
+    </div>
+
+    <div class="ug-cards" style="--ug-gap:12px">
+      <div class="ug-field"><label for="d-method">반출 형태</label>
+        <select id="d-method" name="method" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          {% for v, l in methods.items() %}
+          <option value="{{ v }}"
+            {% if form.get('method', 'view') == v %}selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="ug-field"><label for="d-mask">제3자 비식별</label>
+        <select id="d-mask" name="masked" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          <option value="1" {% if form.get('masked', '1') == '1' %}selected{% endif %}
+            >마스킹 처리함</option>
+          <option value="0" {% if form.get('masked') == '0' %}selected{% endif %}
+            >처리 안 함 (사유를 비고에)</option>
+        </select></div>
+      <div class="ug-field"><label for="d-handled">처리 일시</label>
+        <input id="d-handled" name="handled_at" type="datetime-local"
+               value="{{ form.get('handled_at', '') }}"></div>
+      <div class="ug-field"><label for="d-handler">처리자</label>
+        <input id="d-handler" name="handler_login" autocomplete="off"
+               placeholder="비우면 로그인 계정"
+               value="{{ form.get('handler_login', '') }}"></div>
+      <div class="ug-field"><label for="d-due">파기 예정일</label>
+        <input id="d-due" name="disposal_due" type="datetime-local"
+               value="{{ form.get('disposal_due', '') }}"></div>
+    </div>
+
+    <div class="ug-field"><label for="d-note">비고</label>
+      <textarea id="d-note" name="note" rows="2"
+                placeholder="마스킹을 안 했다면 그 사유를 여기 적습니다."
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px;font:inherit">{{ form.get('note', '') }}</textarea></div>
+
+    <button class="ug-btn" type="submit" id="d-submit"
+            style="width:auto;padding:10px 20px">등록</button>
+    <button class="ug-btn ug-btn--ghost" type="button" id="d-cancel"
+            style="width:auto;padding:10px 20px;display:none">정정 취소</button>
+  </form>
+</div>
+{% endif %}
+
+<!-- 검색 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <form method="get" action="/admin/disclosure"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:200px;flex:2 1 240px">
+      <label for="f-q">검색어</label>
+      <input id="f-q" name="q" value="{{ filt.q }}"
+             placeholder="기관·요청자·근거·목적·지점 일부">
+    </div>
+    <div class="ug-field" style="margin:0;min-width:150px;flex:1 1 150px">
+      <label for="f-method">반출 형태</label>
+      <select id="f-method" name="method" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in methods.items() %}
+        <option value="{{ v }}" {% if filt.method == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:140px;flex:1 1 140px">
+      <label for="f-days">기간</label>
+      <select id="f-days" name="days" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        <option value="30" {% if filt.days == '30' %}selected{% endif %}>최근 30일</option>
+        <option value="90" {% if filt.days == '90' %}selected{% endif %}>최근 90일</option>
+        <option value="365" {% if filt.days == '365' %}selected{% endif %}>최근 1년</option>
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:140px;flex:1 1 140px">
+      <label for="f-over">파기</label>
+      <select id="f-over" name="overdue" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        <option value="1" {% if filt.overdue == '1' %}selected{% endif %}>기한 지난 건만</option>
+      </select>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+    <a class="ug-btn ug-btn--ghost" href="/admin/disclosure"
+       style="width:auto;padding:11px 18px;text-decoration:none;text-align:center">
+      조건 해제</a>
+  </form>
+</div>
+
+<!-- 목록 -->
+<div class="ug-card">
+  <h3>반출 내역 ({{ rows|length }}건)</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>요청 일시</th><th>요청 기관 / 요청자</th><th>근거 · 목적</th>
+        <th>대상 · 기간</th><th>형태</th><th>파기</th>
+        {% if can_edit %}<th>관리</th>{% endif %}
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      {% set stale = r.id in corrected %}
+      <tr{% if stale %} style="opacity:.5"{% endif %}>
+        <td style="white-space:nowrap;font-variant-numeric:tabular-nums">
+          {{ r.requested_at.strftime("%Y-%m-%d %H:%M") }}
+          <div style="font-size:.75rem;color:var(--muted)">
+            #{{ r.id }}{% if r.corrects_id %} · {{ r.corrects_id }}번 정정{% endif %}</div>
+          {% if stale %}
+          <span class="ug-badge ug-badge--off">정정됨</span>{% endif %}
+        </td>
+        <td style="white-space:normal;max-width:200px">
+          <b>{{ r.requester_org }}</b>
+          {% if r.requester_name %}
+          <div style="font-size:.8rem;color:var(--muted)">{{ r.requester_name }}
+            {% if r.requester_contact %} · {{ r.requester_contact }}{% endif %}</div>
+          {% endif %}
+        </td>
+        <td style="white-space:normal;max-width:280px">
+          {{ r.legal_basis }}
+          {% if r.purpose %}
+          <div style="font-size:.8rem;color:var(--muted);white-space:pre-wrap"
+            >{{ r.purpose }}</div>{% endif %}
+          {% if r.correction_reason %}
+          <div style="font-size:.78rem;color:#ffcf7a;margin-top:4px">
+            정정 사유 — {{ r.correction_reason }}</div>{% endif %}
+        </td>
+        <td style="white-space:normal;max-width:220px;font-size:.85rem">
+          {% for c in r.camera_ids.split(",") if c.strip() %}
+          <div>{{ cam_labels.get(c.strip(), c.strip()) }}</div>
+          {% else %}<span style="color:var(--muted)">—</span>{% endfor %}
+          {% if r.period_from or r.period_to %}
+          <div style="color:var(--muted);font-size:.78rem;margin-top:3px">
+            {{ r.period_from.strftime("%m-%d %H:%M") if r.period_from else "?" }}
+            ~ {{ r.period_to.strftime("%m-%d %H:%M") if r.period_to else "?" }}</div>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          {% if r.method == "original" %}
+            <span class="ug-badge ug-badge--crit">원본</span>
+          {% elif r.method == "copy" %}
+            <span class="ug-badge ug-badge--warn">사본</span>
+          {% else %}
+            <span class="ug-badge ug-badge--off">열람</span>
+          {% endif %}
+          {% if not r.masked %}
+          <div style="margin-top:4px"><span class="ug-badge ug-badge--warn"
+            >비식별 미처리</span></div>{% endif %}
+        </td>
+        <td style="white-space:nowrap;font-size:.82rem">
+          {% if r.disposed_at %}
+            <span class="ug-badge ug-badge--on">파기</span>
+            <div style="color:var(--muted);font-size:.75rem">
+              {{ r.disposed_at.strftime("%Y-%m-%d") }}</div>
+          {% elif r.disposal_due %}
+            {% if is_overdue(r) %}
+            <span class="ug-badge ug-badge--crit">기한 초과</span>
+            {% else %}<span style="color:var(--muted)">예정</span>{% endif %}
+            <div style="color:var(--muted);font-size:.75rem">
+              {{ r.disposal_due.strftime("%Y-%m-%d") }}</div>
+          {% else %}
+            <span style="color:var(--muted)">해당 없음</span>
+          {% endif %}
+        </td>
+        {% if can_edit %}
+        <td style="white-space:nowrap">
+          {% if not stale %}
+          <button class="ug-btn ug-btn--ghost" type="button"
+                  style="width:auto;padding:6px 12px;font-size:.8rem"
+                  data-correct="{{ r.id }}"
+                  data-when="{{ r.requested_at.strftime('%Y-%m-%dT%H:%M') }}"
+                  data-org="{{ r.requester_org }}"
+                  data-rname="{{ r.requester_name }}"
+                  data-contact="{{ r.requester_contact }}"
+                  data-basis="{{ r.legal_basis }}"
+                  data-purpose="{{ r.purpose }}"
+                  data-cams="{{ r.camera_ids }}"
+                  data-pf="{{ r.period_from.strftime('%Y-%m-%dT%H:%M') if r.period_from else '' }}"
+                  data-pt="{{ r.period_to.strftime('%Y-%m-%dT%H:%M') if r.period_to else '' }}"
+                  data-method="{{ r.method }}"
+                  data-masked="{{ '1' if r.masked else '0' }}"
+                  data-handled="{{ r.handled_at.strftime('%Y-%m-%dT%H:%M') if r.handled_at else '' }}"
+                  data-handler="{{ r.handler_login }}"
+                  data-due="{{ r.disposal_due.strftime('%Y-%m-%dT%H:%M') if r.disposal_due else '' }}"
+                  data-note="{{ r.note }}">정정</button>
+          {% if r.disposal_due and not r.disposed_at %}
+          <form method="post" action="/admin/disclosure/dispose"
+                style="display:inline"
+                onsubmit="return confirm('{{ r.id }}번 반출 사본을 파기했음을 기록합니다. 되돌리려면 정정으로 새 줄을 만들어야 합니다. 진행할까요?')">
+            <input type="hidden" name="row_id" value="{{ r.id }}">
+            <button class="ug-btn ug-btn--ghost" type="submit"
+                    style="width:auto;padding:6px 12px;font-size:.8rem">파기 확인</button>
+          </form>
+          {% endif %}
+          {% endif %}
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 7 if can_edit else 6 }}" class="ug-empty">
+        {% if filt.q or filt.method or filt.overdue or filt.days %}
+        조건에 맞는 기록이 없습니다.
+        {% else %}등록된 반출 기록이 없습니다.{% endif %}
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<p class="ug-note">이 대장은 <b>삭제할 수 없습니다</b>. 잘못 적었으면 「정정」을
+  눌러 사유를 남기고 새 줄을 만드십시오 — 원본은 흐리게 남습니다. 대장을 누가
+  만졌는지는 <a href="/admin/audit" style="color:inherit">감사 로그 (S-91)</a>에도
+  기록됩니다. 요청자 성명·연락처는 개인정보이므로 화면 캡처를 외부로 보내지
+  마십시오.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 「정정」을 누르면 위 폼이 정정 모드로 바뀐다. 값을 다시 치게 하면 옮겨
+// 적다가 틀리므로, 원본 값을 그대로 채우고 고칠 칸만 고치게 한다.
+(function () {
+  var form = document.getElementById('d-form');
+  if (!form) { return; }
+  var title = document.getElementById('form-title');
+  var origin = document.getElementById('d-origin');
+  var reasonWrap = document.getElementById('d-reason-wrap');
+  var reason = document.getElementById('d-reason');
+  var submit = document.getElementById('d-submit');
+  var cancel = document.getElementById('d-cancel');
+
+  function toCreate() {
+    form.action = '/admin/disclosure/create';
+    origin.value = '';
+    reasonWrap.style.display = 'none';
+    reason.required = false;
+    reason.value = '';
+    title.textContent = '반출 기록 등록';
+    submit.textContent = '등록';
+    cancel.style.display = 'none';
+  }
+
+  document.querySelectorAll('button[data-correct]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var d = btn.dataset;
+      form.action = '/admin/disclosure/correct';
+      origin.value = d.correct;
+      form.requested_at.value = d.when;
+      form.requester_org.value = d.org;
+      form.requester_name.value = d.rname;
+      form.requester_contact.value = d.contact;
+      form.legal_basis.value = d.basis;
+      form.purpose.value = d.purpose;
+      form.camera_ids.value = d.cams;
+      form.period_from.value = d.pf;
+      form.period_to.value = d.pt;
+      form.method.value = d.method;
+      form.masked.value = d.masked;
+      form.handled_at.value = d.handled;
+      form.handler_login.value = d.handler;
+      form.disposal_due.value = d.due;
+      form.note.value = d.note;
+      reasonWrap.style.display = '';
+      reason.required = true;
+      title.textContent = d.correct + '번 기록 정정';
+      submit.textContent = '정정본 저장';
+      cancel.style.display = '';
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      reason.focus();
+    });
+  });
+
+  cancel.addEventListener('click', function () { toCreate(); form.reset(); });
+})();
+</script>
+{% endblock %}

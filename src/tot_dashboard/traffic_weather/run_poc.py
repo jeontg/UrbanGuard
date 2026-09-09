@@ -26,6 +26,7 @@ from ..common.notifier import AlertNotifier, DuplicateNotificationError, Notific
 from .agents.risk_decision import RiskDecisionAgent
 from .agents.semantic_agent import SemanticAgent
 from .agents.vlm_situation import VlmSituationAgent
+from .knowledge.ontology import TRAFFIC_RISK_CATALOG
 from .report_generator import build_briefing, save_briefing
 from .perception.detection_source import SyntheticDetectionSource, YoloDetectionSource
 from .perception.rainfall_provider import MockRainfallProvider
@@ -81,7 +82,7 @@ def main() -> None:
     tracker = TrafficBehaviorTracker(fps=args.fps, use_bytetrack=args.bytetrack)
     vlm = VlmSituationAgent(use_vlm=False)
     semantic = SemanticAgent()
-    decider = RiskDecisionAgent(alert_min_severity=2)
+    decider = RiskDecisionAgent(TRAFFIC_RISK_CATALOG, alert_min_severity=2)
     notifier = AlertNotifier()
     context = {"block": args.block}
     notify_count = 0

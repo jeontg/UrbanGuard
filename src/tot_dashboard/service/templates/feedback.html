@@ -1,0 +1,211 @@
+{# S-07 탐지 피드백 — 관제요원의 판정을 학습으로 되돌리는 고리.
+
+   왜 있나
+     경남 SFR-003 「조치 결과(오탐, 실제 상황, 조치 완료)를 입력하여 학습
+     데이터로 활용」, 서울 SFR-009 「미탐/오탐 보정」, SFR-015 「관제 피드백
+     기반 AI 성능 고도화」.
+
+   왜 종결된 것만 묻나
+     진행 중인 사건을 두고 오탐이냐 묻는 것은 순서가 틀렸다. 관제요원은
+     지금 대응해야 한다.
+
+   왜 판정이 곧 학습이 아닌가
+     한 번 잘못 찍은 클릭이 모델을 바꾸면 안 된다. 라벨 확인 단계가 사이에
+     있고, used_for_training 이 그 사실을 기록한다. #}
+{% extends "_layout.html" %}
+{% block title %}탐지 피드백 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>탐지 피드백</h2>
+  <p>탐지가 <b>맞았는지 틀렸는지</b>를 남깁니다. 이 판정이 모델 개선의
+    원천이 됩니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if errors %}
+<p class="ug-error" role="alert">
+  {% for e in errors %}{{ e }}<br>{% endfor %}
+</p>
+{% endif %}
+
+<div class="ug-cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+     margin-bottom:16px">
+  <section class="ug-card">
+    <p class="ug-stat-label">실제 상황</p>
+    <p class="ug-stat">{{ counts['true_positive'] }}건</p>
+  </section>
+  <section class="ug-card">
+    <p class="ug-stat-label">오탐</p>
+    <p class="ug-stat" style="color:#e8590c">{{ counts['false_positive'] }}건</p>
+  </section>
+  <section class="ug-card">
+    <p class="ug-stat-label">미탐 신고</p>
+    <p class="ug-stat" style="color:#c92a2a">{{ counts['false_negative'] }}건</p>
+  </section>
+  <section class="ug-card">
+    <p class="ug-stat-label">오탐률</p>
+    {% if counts.false_rate is none %}
+      <p class="ug-stat" style="font-size:1rem;color:var(--muted)">—</p>
+      <p class="ug-note" style="margin:0">아직 판정이 없습니다</p>
+    {% else %}
+      <p class="ug-stat">{{ counts.false_rate }}%</p>
+      <p class="ug-note" style="margin:0">판정 {{ counts.judged }}건 기준</p>
+    {% endif %}
+  </section>
+</div>
+
+<p class="ug-note">
+  ⚠ 오탐률에서 <b>판단 보류와 미탐은 뺐습니다.</b> 판단 보류는 정탐도 오탐도
+  아니고, 미탐은 분모가 다릅니다 — 섞으면 숫자가 무슨 뜻인지 알 수 없게 됩니다.
+</p>
+
+<section class="ug-card" style="margin-bottom:16px">
+  <h3>판정 대기 <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+    {{ pending|length }}건</span></h3>
+  <p class="ug-note">
+    <b>종결된 이벤트</b>만 묻습니다. 진행 중인 사건은 지금 대응할 일이지
+    판정할 일이 아닙니다.
+  </p>
+  {% if pending %}
+  <div style="overflow-x:auto">
+  <table class="ug-table">
+    <thead><tr>
+      <th style="width:70px">번호</th><th>지점</th>
+      <th style="width:90px">유형</th><th style="width:80px">등급</th>
+      <th>판정</th>
+    </tr></thead>
+    <tbody>
+      {% for ev in pending %}
+      <tr>
+        <td><a href="/events/{{ ev.id }}"
+               style="color:var(--accent);text-decoration:none">#{{ ev.id }}</a></td>
+        <td>{{ ev.place_name or ev.block_id }}</td>
+        <td>{{ domain_labels.get(ev.domain, ev.domain) }}</td>
+        <td>{{ ev.level }}</td>
+        <td>
+          <form method="post" action="/feedback/judge"
+                style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <input type="hidden" name="event_id" value="{{ ev.id }}">
+            <input name="reason" placeholder="사유 (오탐은 필수)"
+                   style="flex:1;min-width:140px;padding:6px;background:var(--bg);
+                          color:var(--text);border:1px solid var(--border);
+                          border-radius:6px;font-size:.8rem">
+            {% for v in event_verdicts %}
+            <button class="ug-btn" type="submit" name="verdict" value="{{ v }}"
+                    style="width:auto;padding:6px 10px;font-size:.78rem">
+              {{ labels[v] }}</button>
+            {% endfor %}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="ug-empty">판정을 기다리는 종결 이벤트가 없습니다.</p>
+  {% endif %}
+</section>
+
+<section class="ug-card" style="margin-bottom:16px">
+  <h3>미탐 신고</h3>
+  <p class="ug-note">
+    <b>있었는데 탐지가 못 잡은 건</b>을 남깁니다. 붙일 이벤트가 없어
+    지점·시각·유형을 직접 적습니다 — <b>미탐은 오탐보다 위험합니다.</b>
+  </p>
+  <form method="post" action="/feedback/missed"
+        style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <div class="ug-field" style="margin:0;min-width:180px">
+      <label for="fb-cam">지점</label>
+      <select id="fb-cam" name="camera_id" style="width:100%;padding:9px;
+              background:var(--bg);color:var(--text);
+              border:1px solid var(--border);border-radius:8px">
+        {% for cam in cameras %}
+        <option value="{{ cam.id }}">{{ cam.name }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="ug-field" style="margin:0;min-width:180px">
+      <label for="fb-hz">위험유형</label>
+      <select id="fb-hz" name="hazard_type_code" style="width:100%;padding:9px;
+              background:var(--bg);color:var(--text);
+              border:1px solid var(--border);border-radius:8px">
+        {% for h in hazards %}
+        <option value="{{ h.code }}" data-domain="{{ h.domain }}">{{ h.label }}</option>
+        {% endfor %}
+      </select></div>
+    <div class="ug-field" style="margin:0;min-width:200px">
+      <label for="fb-when">발생 시각</label>
+      <input id="fb-when" name="occurred_at" type="datetime-local"
+             style="width:100%;padding:8px;background:var(--bg);
+                    color:var(--text);border:1px solid var(--border);
+                    border-radius:8px"></div>
+    <div class="ug-field" style="margin:0;flex:1;min-width:200px">
+      <label for="fb-why">무엇을 놓쳤나 (필수)</label>
+      <input id="fb-why" name="reason"
+             placeholder="예: 지하차도 입구 침수가 20분간 잡히지 않음"></div>
+    <input type="hidden" name="domain" id="fb-domain" value="">
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 18px">신고</button>
+  </form>
+</section>
+
+<section class="ug-card">
+  <h3>최근 판정 <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+    {{ recent|length }}건</span></h3>
+  {% if recent %}
+  <div style="overflow-x:auto">
+  <table class="ug-table">
+    <thead><tr>
+      <th style="width:110px">판정</th><th style="width:80px">이벤트</th>
+      <th>지점</th><th>사유</th>
+      <th style="width:110px">판정자</th><th style="width:90px">학습 반영</th>
+    </tr></thead>
+    <tbody>
+      {% for f in recent %}
+      <tr>
+        <td><b style="color:{% if f.verdict == 'false_positive' %}#e8590c
+            {% elif f.verdict == 'false_negative' %}#c92a2a
+            {% else %}inherit{% endif %}">{{ labels.get(f.verdict, f.verdict) }}</b></td>
+        <td>{% if f.event_id %}
+            <a href="/events/{{ f.event_id }}"
+               style="color:var(--accent);text-decoration:none">#{{ f.event_id }}</a>
+            {% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
+        <td>{{ f.camera_id }}</td>
+        <td style="font-size:.82rem">{{ f.reason }}</td>
+        <td style="font-size:.82rem">{{ f.login_id }}</td>
+        <td>{% if f.used_for_training %}반영됨
+            {% else %}<span style="color:var(--muted)">대기</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="ug-empty">아직 판정이 없습니다.</p>
+  {% endif %}
+  <p class="ug-note">
+    ⚠ <b>판정했다고 곧바로 학습되지 않습니다.</b> 라벨 확인 단계가 사이에 있고,
+    「학습 반영」 칸이 실제로 쓰였는지를 보여 줍니다. 한 번 잘못 찍은 클릭이
+    모델을 바꾸면 안 됩니다.
+  </p>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 위험유형에서 도메인을 따라간다 — 사용자가 두 번 고르게 하지 않는다.
+(function () {
+  var hz = document.getElementById("fb-hz");
+  var dom = document.getElementById("fb-domain");
+  if (!hz || !dom) { return; }
+  function sync() {
+    var opt = hz.options[hz.selectedIndex];
+    dom.value = opt ? (opt.dataset.domain || "") : "";
+  }
+  hz.addEventListener("change", sync);
+  sync();
+})();
+</script>
+{% endblock %}

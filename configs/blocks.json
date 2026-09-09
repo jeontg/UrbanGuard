@@ -1,5 +1,30 @@
 {
   "_comment": "1 블록 = 1 카메라(source) + 강수(rainfall) + 인접 하천(river). source.type: synthetic|hls|rtsp|video. rainfall.type: sine(기본)|mock|kma(기상청, KMA_SERVICE_KEY 필요). river.type: none(기본)|mock|hrfco. CCTV: 부산시 BusanITSCCTV/CCTVList(hlsAddr).",
+  "_crowd_comment": "인파 위험행동 탐지 설정(blocks[].crowd). 현장 장비 미보유 상태에서 개발했으므로 항목마다 '임시데이터'와 '실제장비' 중 선택한다. ①source.type: mock(합성 궤적, 기본)|detector(실제 사람검출, torchvision BSD·CPU). ②environment.type: mock(시각기반 주야판정, 기본)|device(환경센서 HTTP, url 필요). ③stereo.type: mock(박스높이 원근근사, 기본)|device(스테레오 CCTV HTTP, url 필요). device 선택 시 url이 없거나 연결 실패하면 경고 후 mock으로 폴백하며 응답의 source 필드에 'mock'으로 표기된다(가짜 데이터가 실측으로 오인되지 않도록). 2D LiDAR은 범위 제외. 상세: docs/crowd_behavior_detection_plan.md",
+  "_crowd_example_device": {
+    "crowd": {
+      "source": {
+        "type": "detector",
+        "arch": "fasterrcnn",
+        "conf": 0.4,
+        "tile_grid": [
+          2,
+          2
+        ],
+        "nms_iou": 0.4
+      },
+      "environment": {
+        "type": "device",
+        "url": "http://10.0.0.9/env",
+        "ttl_sec": 5.0
+      },
+      "stereo": {
+        "type": "device",
+        "url": "http://10.0.0.9/depth",
+        "ttl_sec": 5.0
+      }
+    }
+  },
   "blocks": [
     {
       "id": "BLOCK-CHORYANG",
@@ -27,6 +52,20 @@
         "peak": 27.0,
         "period": 48.0,
         "phase": 0.0
+      },
+      "crowd": {
+        "_note": "현장 장비 미보유 -> 전부 mock. 장비 설치 후 type만 detector/device로 변경하면 되고 코드 수정은 불필요. 예시는 최상단 _crowd_example_device 참고.",
+        "source": {
+          "type": "mock"
+        },
+        "environment": {
+          "type": "mock"
+        },
+        "stereo": {
+          "type": "mock"
+        },
+        "loiter_sec": 60.0,
+        "commercial_zone": true
       }
     },
     {
@@ -85,6 +124,121 @@
         "peak": 29.0,
         "period": 46.0,
         "phase": 24.0
+      }
+    },
+    {
+      "id": "BLOCK-OLYMPIC",
+      "name": "올림픽교차로",
+      "coordinates": {
+        "lat": 35.168694,
+        "lng": 129.139049
+      },
+      "road_attrs": [
+        "교차로",
+        "저지대"
+      ],
+      "dept": "도로관리과",
+      "source": {
+        "type": "hls",
+        "url": "https://its-stream3.busan.go.kr:8443/rtplive/cctv_88.stream/playlist.m3u8",
+        "cctv_name": "올림픽교차로"
+      },
+      "rainfall": {
+        "type": "sine"
+      },
+      "river": {
+        "type": "none"
+      },
+      "rain": {
+        "peak": 26.0,
+        "period": 47.0,
+        "phase": 18.0
+      }
+    },
+    {
+      "id": "BLOCK-BEXCO2",
+      "name": "벡스코 신관2·올림픽교차로",
+      "coordinates": {
+        "lat": 35.166532,
+        "lng": 129.135721
+      },
+      "road_attrs": [
+        "교차로",
+        "저지대"
+      ],
+      "dept": "도로관리과",
+      "source": {
+        "type": "hls",
+        "url": "https://its-stream5.busan.go.kr:8443/rtplive/ID-1319_.stream/playlist.m3u8",
+        "cctv_name": "벡스코_신관2_올림픽교차로"
+      },
+      "rainfall": {
+        "type": "sine"
+      },
+      "river": {
+        "type": "none"
+      },
+      "rain": {
+        "peak": 25.0,
+        "period": 49.0,
+        "phase": 30.0
+      }
+    },
+    {
+      "id": "BLOCK-CENTUMSTN",
+      "name": "센텀시티역",
+      "coordinates": {
+        "lat": 35.169264,
+        "lng": 129.13238
+      },
+      "road_attrs": [
+        "역 광장"
+      ],
+      "dept": "도로관리과",
+      "source": {
+        "type": "hls",
+        "url": "https://its-stream4.busan.go.kr:8443/rtplive/cctv_203.stream/playlist.m3u8",
+        "cctv_name": "센텀시티역"
+      },
+      "rainfall": {
+        "type": "sine"
+      },
+      "river": {
+        "type": "none"
+      },
+      "rain": {
+        "peak": 28.0,
+        "period": 45.0,
+        "phase": 36.0
+      }
+    },
+    {
+      "id": "BLOCK-JAESONG",
+      "name": "재송삼익아파트삼거리",
+      "coordinates": {
+        "lat": 35.191534,
+        "lng": 129.119976
+      },
+      "road_attrs": [
+        "삼거리",
+        "저지대"
+      ],
+      "dept": "도로관리과",
+      "source": {
+        "type": "hls",
+        "url": "https://its-stream6.busan.go.kr:8443/rtplive/cctv_2022225.stream/playlist.m3u8",
+        "cctv_name": "재송삼익아파트삼거리"
+      },
+      "rainfall": {
+        "type": "sine"
+      },
+      "river": {
+        "type": "none"
+      },
+      "rain": {
+        "peak": 23.0,
+        "period": 47.0,
+        "phase": 42.0
       }
     }
   ],

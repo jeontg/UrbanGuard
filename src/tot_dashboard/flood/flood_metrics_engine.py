@@ -28,13 +28,12 @@ from .metrics_core import (
     ExpansionRateTracker,
     bottom_center,
     count_points_on_mask,
-    point_on_mask,
     tire_zone_analysis,
 )
 from .water_segmentation import WaterResult
 
 if TYPE_CHECKING:
-    from ..models import TrafficMetrics, VehicleObject
+    from ..models import VehicleObject
 
 
 class FloodMetricsEngine:
@@ -58,17 +57,29 @@ class FloodMetricsEngine:
         water: WaterResult,
         vehicles: list["VehicleObject"],
         person_points: list[tuple[float, float]],
-        traffic: "TrafficMetrics",
         frame_number: int,
         timestamp_sec: float,
     ) -> FloodMetrics:
+        """순수 침수 지표만 계산한다 (2026-08-21, flood/traffic 도메인 분리).
+
+        ⚠️ 예전에는 ``traffic: TrafficMetrics`` 파라미터를 받아
+        ``m.traffic_state``/``m.stopped_vehicles_near_water``까지 계산했다.
+        `traffic_state`는 순수 교통 신호라 이 엔진이 소유할 이유가 없어
+        제거했다. `stopped_vehicles_near_water`("정지"+"물 근처" 결합값)가
+        필요하면 orchestrator(``service/runner.py``)가 이 결과와 교통 쪽
+        산출물을 조합해 계산한다.
+        """
         h, w = water.mask.shape[:2]
         self.roi_cache.ensure(h, w)
-        roi = self.roi_cache.roi
+        # ⚠️ 2026-08-23 — road_mask/low_mask 뿐 아니라 여기서 좌표를 직접
+        # 쓰는 lane_threshold_line(water_crosses_line)·low_point_roi
+        # (point_in_polygons)도 반드시 `scaled`(이 프레임 해상도로 보정된
+        # 사본)를 써야 한다. `self.roi_cache.roi`(원본)를 쓰면 해상도가
+        # 다를 때 마스크는 맞는데 이 두 판정만 어긋나는 혼선이 생긴다.
+        roi = self.roi_cache.scaled
 
         m = FloodMetrics(frame_number=frame_number, timestamp_sec=float(timestamp_sec))
         m.roi_defined = roi.has_road
-        m.traffic_state = traffic.state
 
         if self.roi_cache.road_mask is not None:
             water_in_road = int(np.count_nonzero(
@@ -104,10 +115,6 @@ class FloodMetricsEngine:
 
         m.vehicles_touching_water = count_points_on_mask(
             [bottom_center(v.bbox) for v in vehicles], water.mask
-        )
-        m.stopped_vehicles_near_water = sum(
-            1 for v in vehicles
-            if v.stalled and point_on_mask(bottom_center(v.bbox), water.mask, pad=8)
         )
         m.vehicles_tire_in_water, m.max_vehicle_submersion = tire_zone_analysis(
             [v.bbox for v in vehicles], water.mask

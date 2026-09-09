@@ -1,0 +1,169 @@
+{% extends "_layout.html" %}
+{% block title %}현장 제보 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>현장 제보 <span style="font-size:.8rem;color:var(--muted);
+      font-weight:400">S-43</span></h2>
+  <p>현장에서 촬영한 노면 상태를 접수합니다. 확인된 사진은 재학습 데이터로 쌓입니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% for e in errors %}<p class="ug-error" role="alert">{{ e }}</p>{% endfor %}
+
+<div class="ug-cards" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+     margin-bottom:16px">
+  {% for key, label, color in [("received","접수","#e8843b"),
+                               ("reviewed","확인","#d4a017"),
+                               ("converted","보수 요청","#3fb950"),
+                               ("rejected","반려","#93a0bb")] %}
+  <a href="/reports?status={{ key }}" style="text-decoration:none">
+    <section class="ug-card" style="{% if sel_status == key %}border-color:var(--accent){% endif %}">
+      <p class="ug-stat" style="color:{{ color }}">{{ counts[key] }}</p>
+      <p class="ug-stat-label">{{ label }}</p>
+    </section>
+  </a>
+  {% endfor %}
+  <section class="ug-card" style="background:rgba(79,140,255,.10);border-color:var(--accent)">
+    <p class="ug-stat" style="color:var(--accent)">{{ training_ready }}</p>
+    <p class="ug-stat-label">학습 데이터 확보</p>
+  </section>
+</div>
+
+<details class="ug-card" style="margin-bottom:16px" {% if not rows %}open{% endif %}>
+  <summary style="cursor:pointer;font-weight:700">+ 제보 올리기</summary>
+  <form method="post" action="/reports" enctype="multipart/form-data"
+        style="margin-top:14px">
+    <div class="ug-cards" style="--ug-gap:12px;
+         grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+      <div class="ug-field" style="margin:0">
+        <label for="r-photo">사진 (필수)</label>
+        <input id="r-photo" name="photo" type="file" required
+               accept="image/*" capture="environment">
+      </div>
+      <div class="ug-field" style="margin:0">
+        <label for="r-block">감시지점</label>
+        <select id="r-block" name="block_id" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          <option value="">— 선택 안 함 —</option>
+          {% for bid, bname in blocks %}<option value="{{ bid }}">{{ bname }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="ug-field" style="margin:0">
+        <label for="r-place">위치 설명</label>
+        <input id="r-place" name="place_name" placeholder="예: 중앙대로 500 앞 2차로">
+      </div>
+      <div class="ug-field" style="margin:0">
+        <label for="r-desc">상태 설명</label>
+        <input id="r-desc" name="description" placeholder="예: 지름 30cm 포트홀">
+      </div>
+    </div>
+    <input type="hidden" name="lat" id="r-lat"><input type="hidden" name="lng" id="r-lng">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+      <button class="ug-btn" type="submit" style="width:auto;padding:10px 22px">접수</button>
+      <button class="ug-btn ug-btn--ghost" type="button" id="btn-geo">현재 위치 첨부</button>
+      <span id="geo-msg" class="ug-note" style="margin:0"></span>
+    </div>
+    <p class="ug-note">
+      사진은 <b>사람 영역을 가려서만 저장</b>되며 원본은 남기지 않습니다.
+      다만 <b>차량번호판은 자동으로 가려지지 않으니</b> 확인이 필요합니다.
+      최대 {{ max_mb }}MB.
+    </p>
+  </form>
+</details>
+
+<div class="ug-card">
+  <h3>제보 {{ rows|length }}건</h3>
+  {% if not rows %}<p class="ug-empty">해당 조건의 제보가 없습니다.</p>{% endif %}
+
+  {% for r in rows %}
+  <div style="border:1px solid var(--border);border-radius:10px;padding:14px;
+              margin-bottom:12px;display:flex;gap:14px;flex-wrap:wrap">
+    <div style="flex:0 0 200px;max-width:100%">
+      {% if r.photo_path %}
+      <a href="/reports/photo/{{ r.photo_path }}" target="_blank">
+        <img src="/reports/photo/{{ r.photo_path }}" alt="제보 사진"
+             style="width:100%;border-radius:8px;border:1px solid var(--border)"></a>
+      {% else %}
+      <div class="ug-empty" style="padding:30px 8px;text-align:center;
+           border:1px dashed var(--border);border-radius:8px">사진 없음</div>
+      {% endif %}
+      <p style="margin:6px 0 0;font-size:.75rem;
+         color:{% if r.mask_status in needs_review %}#ff9a9c{% else %}var(--muted){% endif %}">
+        {{ mask_labels.get(r.mask_status, r.mask_status) }}
+        {% if r.mask_count %}({{ r.mask_count }}곳){% endif %}</p>
+    </div>
+
+    <div style="flex:1 1 300px;min-width:240px">
+      <p style="margin:0 0 6px">
+        <span class="ug-badge {% if r.status == 'received' %}ug-badge--warn
+              {% elif r.status == 'converted' %}ug-badge--on
+              {% else %}ug-badge--off{% endif %}">
+          {{ status_labels.get(r.status, r.status) }}</span>
+        <b>{{ r.place_name or r.block_id or "위치 미기재" }}</b>
+        <span style="color:var(--muted);font-size:.8rem">
+          #{{ r.id }} · {{ r.created_at.strftime("%m-%d %H:%M") }} · {{ r.login_id }}</span>
+      </p>
+      <p style="margin:0 0 8px;font-size:.9rem">{{ r.description or "설명 없음" }}</p>
+      {% if r.usable_for_training %}
+      <p style="margin:0 0 8px"><span class="ug-badge ug-badge--on">학습 데이터</span></p>
+      {% endif %}
+      {% if r.disposition %}
+      <p style="margin:0 0 8px;font-size:.82rem;color:var(--muted)">
+        처리: {{ r.disposition }}</p>{% endif %}
+      {% if r.event_id %}
+      <p style="margin:0 0 8px"><a href="/events/{{ r.event_id }}"
+         style="color:var(--accent);text-decoration:none">→ 이벤트 #{{ r.event_id }}</a></p>
+      {% endif %}
+
+      {% if can_review and r.status in ('received', 'reviewed') %}
+      <form method="post" action="/reports/{{ r.id }}/action"
+            style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div class="ug-field" style="margin:0;flex:1 1 180px">
+          <label for="m{{ r.id }}" style="font-size:.76rem">처리 메모</label>
+          <input id="m{{ r.id }}" name="memo" style="padding:8px 10px">
+        </div>
+        <button class="ug-btn ug-btn--ghost" type="submit" name="act" value="review"
+                style="padding:8px 12px;font-size:.8rem">확인만</button>
+        <button class="ug-btn" type="submit" name="act" value="review"
+                onclick="this.form.usable.value='1'"
+                style="width:auto;padding:8px 12px;font-size:.8rem">확인 + 학습용</button>
+        <button class="ug-btn" type="submit" name="act" value="convert"
+                style="width:auto;padding:8px 12px;font-size:.8rem">보수 요청 전환</button>
+        <button class="ug-btn ug-btn--ghost" type="submit" name="act" value="reject"
+                style="padding:8px 12px;font-size:.8rem">반려</button>
+        <input type="hidden" name="usable" value="0">
+      </form>
+      {% endif %}
+      {% if can_review and r.photo_path %}
+      <form method="post" action="/reports/{{ r.id }}/action" style="margin-top:8px"
+            onsubmit="return confirm('사진을 영구 파기합니다. 되돌릴 수 없습니다. 계속하시겠습니까?')">
+        <input type="hidden" name="act" value="delete_photo">
+        <button class="ug-btn ug-btn--ghost" type="submit"
+                style="padding:5px 10px;font-size:.76rem">사진 파기</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 현재 위치는 사용자가 눌렀을 때만 가져온다 — 묻지 않고 수집하지 않는다.
+document.getElementById('btn-geo').addEventListener('click', function () {
+  var msg = document.getElementById('geo-msg');
+  if (!navigator.geolocation) { msg.textContent = '이 브라우저는 위치를 지원하지 않습니다.'; return; }
+  msg.textContent = '위치 확인 중…';
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    document.getElementById('r-lat').value = pos.coords.latitude.toFixed(6);
+    document.getElementById('r-lng').value = pos.coords.longitude.toFixed(6);
+    msg.textContent = '위치 첨부됨 (' + pos.coords.latitude.toFixed(4) + ', '
+      + pos.coords.longitude.toFixed(4) + ')';
+  }, function () { msg.textContent = '위치를 가져오지 못했습니다.'; },
+     { enableHighAccuracy: true, timeout: 8000 });
+});
+</script>
+{% endblock %}

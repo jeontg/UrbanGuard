@@ -1,0 +1,203 @@
+{# 서비스 관리 — 5개 서비스(플랫폼-쉘·인파관리·노면관리·침수·교통위험)의
+   현재 가동 정보·상태 (2026-09-01 사용자 요청 신설, 화면번호 미배정).
+
+   설계 의도
+   * "지금 살아 있는가"를 관리자가 필요할 때 한 번 확인하는 화면이다 —
+     home.html의 상시(초 단위) 재기동 카드와는 다른 성격이라 자동
+     새로고침을 넣지 않았다(routes_services.py 머리말 참고).
+   * 서비스별로 다른 부가정보(카메라 대수·상시 감시 여부 등)까지 함께
+     보여줘야 "정상"이라는 말이 실제로 무엇을 뜻하는지 알 수 있다. #}
+{% extends "_layout.html" %}
+{% block title %}서비스 관리 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>서비스 관리</h2>
+  <p>침수·교통위험·인파관리·노면관리는 2026-08-31부터 각자 독립된
+    프로세스로 떠 있습니다. 여기서 5개 서비스가 지금 실제로 응답하는지
+    한 번에 확인합니다 — 새로고침해야 최신 상태로 갱신됩니다.</p>
+</div>
+
+<div class="ug-cards" style="--ug-gap:12px;margin-bottom:16px">
+  <div class="ug-card">
+    <p class="ug-stat" style="color:{{ '#8ee89f' if ok_count == total_count else '#ff9a9c' }}">
+      {{ ok_count }} / {{ total_count }}</p>
+    <p class="ug-stat-label">정상 응답 중인 서비스</p>
+  </div>
+</div>
+
+<div class="ug-card">
+  <h3>서비스 목록</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>서비스</th><th>포트</th><th>상태</th><th>응답시간</th>
+        <th>PID</th><th>가동시간</th><th>감시</th><th>세부 정보</th>
+        <th>조치</th>
+      </tr></thead>
+      <tbody>
+      {% for s in services %}
+      <tr data-svc-row="{{ s.key }}">
+        <td>{{ s.label }}</td>
+        <td>{{ s.port }}</td>
+        <td data-cell="status">
+          {% if s.ok %}<span class="ug-badge ug-badge--on">정상</span>
+          {% elif s.admin_stopped %}<span class="ug-badge ug-badge--warn"
+            title="관리자가 서비스 관리 화면에서 정지시켰습니다 — 재기동해도
+                   다시 켜지지 않습니다. 관리자가 '시작'을 눌러야 합니다."
+            >관리자가 정지함</span>
+          {% else %}<span class="ug-badge ug-badge--crit">응답 없음</span>{% endif %}
+        </td>
+        <td data-cell="latency">{{ s.latency_ms }}ms</td>
+        {% set d = s.detail %}
+        <td data-cell="pid">{{ d.pid if d.pid is defined else "—" }}</td>
+        <td data-cell="uptime">
+          {% if d.uptime_sec is defined %}
+            {% set u = d.uptime_sec | int %}
+            {% if u < 60 %}{{ u }}초
+            {% elif u < 3600 %}{{ (u // 60) }}분
+            {% elif u < 86400 %}{{ (u // 3600) }}시간 {{ (u % 3600) // 60 }}분
+            {% else %}{{ (u // 86400) }}일 {{ (u % 86400) // 3600 }}시간{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td data-cell="supervised">
+          {% if d.supervised is defined %}
+            {% if d.supervised %}<span class="ug-badge ug-badge--on">감시됨</span>
+            {% else %}<span class="ug-badge ug-badge--warn"
+              title="이 프로세스가 죽어도 자동으로 되살릴 감시자가 없습니다"
+              >감시 없음</span>{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td data-cell="extra" style="max-width:360px">
+          {% if s.ok %}
+            {% if s.extra %}
+            <code style="font-size:.76rem;color:var(--muted);word-break:break-all">
+              {{ s.extra | tojson }}</code>
+            {% else %}<span class="ug-note" style="margin:0">—</span>{% endif %}
+          {% else %}
+            <span style="color:#ff9a9c;font-size:.82rem">{{ d.error or
+              ("HTTP " ~ d.status_code if d.status_code is defined else "확인 실패") }}</span>
+          {% endif %}
+        </td>
+        <td data-cell="action">
+          {% if s.key in stoppable %}
+            {% if s.ok %}
+            <button class="ug-btn ug-btn--ghost svc-op-btn" data-key="{{ s.key }}"
+                    data-label="{{ s.label }}" data-action="stop"
+                    style="padding:4px 10px;font-size:.78rem">정지</button>
+            {% elif is_windows %}
+            <button class="ug-btn ug-btn--ghost svc-op-btn" data-key="{{ s.key }}"
+                    data-label="{{ s.label }}" data-action="start"
+                    style="padding:4px 10px;font-size:.78rem">시작</button>
+            {% else %}
+            <span class="ug-note" style="margin:0;font-size:.76rem">
+              리눅스에서는 아직 지원되지 않습니다</span>
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p id="svc-op-msg" class="ug-note" style="display:none"></p>
+  <p class="ug-note">서비스 하나가 응답하지 않아도 나머지 서비스와 이
+    화면 자체에는 영향이 없습니다(서비스별 확인에 2초 시간제한을 둡니다).
+    정지·시작은 그 도메인의 실시간 탐지를 직접 멈추고/되살리는 조작이라
+    감사 로그(S-61)에 남습니다. 플랫폼-쉘 자신의 재기동은 홈 화면(통합
+    상황판)의 "서비스 재기동" 카드에서 따로 합니다.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 서비스 정지/시작 (2026-09-01 신설). home.html의 "서비스 재기동" 버튼과
+// 같은 뼈대(확인창 → 비활성화 → 요청 → 폴링 → 갱신)를 쓰되, 재기동은
+// "다시 뜨는지"를 확인하지만 정지는 "포트가 닫혔는지"를 확인해야 하므로
+// 목표 상태(targetOk)를 액션에 따라 반대로 잡는다.
+(function () {
+  var msg = document.getElementById('svc-op-msg');
+  function say(text, color) {
+    msg.textContent = text;
+    msg.style.color = color || 'var(--muted)';
+    msg.style.display = '';
+  }
+
+  document.querySelectorAll('.svc-op-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var key = btn.dataset.key, label = btn.dataset.label,
+          action = btn.dataset.action;
+      var verb = action === 'stop' ? '정지' : '시작';
+      var warn = '';
+      if (action === 'stop') {
+        // 이 조치로 4개 도메인 서비스가 전부 꺼지게 되는지, 화면이 지금
+        // 들고 있는 상태로 판단한다(서버 왕복을 늘리지 않는다 — 2026-09-01
+        // 계획 §확인이 필요합니다에 이 근사치의 한계를 남겨 뒀다).
+        var others = Array.from(document.querySelectorAll('.svc-op-btn[data-action="stop"]'))
+          .filter(function (b) { return b.dataset.key !== key; });
+        if (others.length === 0) {
+          warn = '\n\n⚠ 이 조치로 4개 도메인 실시간 탐지가 전부 멈춥니다.';
+        }
+      }
+      if (!confirm(
+          label + ' 서비스를 ' + verb + '합니다.\n\n' +
+          (action === 'stop'
+            ? '· 이 도메인의 실시간 탐지가 즉시 멈춥니다.'
+            : '· 모델을 불러오는 동안 최대 2분 정도 걸릴 수 있습니다.') +
+          warn + '\n\n계속할까요?')) {
+        return;
+      }
+      btn.disabled = true;
+      btn.style.opacity = '.5';
+      say(label + ' ' + verb + '을 요청하는 중…');
+
+      fetch('/admin/services/' + key + '/' + action, {
+        method: 'POST', headers: { 'Accept': 'application/json' }
+      }).then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+      }).then(function (res) {
+        if (!res.ok || !res.d.ok) {
+          say(res.d.error || (verb + '할 수 없습니다.'), '#ff9a9c');
+          btn.disabled = false;
+          btn.style.opacity = '';
+          return;
+        }
+        say(res.d.message + ' 확인하는 중…');
+        pollUntil(key, action === 'start', 0, btn);
+      }).catch(function () {
+        say('요청은 보냈습니다. 확인하는 중…');
+        pollUntil(key, action === 'start', 0, btn);
+      });
+    });
+  });
+
+  // targetOk=true면 다시 응답할 때까지(시작), false면 응답이 멈출
+  // 때까지(정지) 기다린다. 정지는 60회(120초), 시작은 flood/traffic의
+  // 모델 로드 시간을 감안해 90회(180초)까지 기다린다.
+  function pollUntil(key, targetOk, tries, btn) {
+    var maxTries = targetOk ? 90 : 60;
+    if (tries > maxTries) {
+      say('시간이 지나도 상태가 바뀌지 않습니다 — data/logs/serve-' + key +
+          '-console.log 를 확인해 주십시오. 확인이 필요합니다.', '#ff9a9c');
+      btn.disabled = false;
+      btn.style.opacity = '';
+      return;
+    }
+    setTimeout(function () {
+      fetch('/api/admin/services/state', { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (data) {
+          var svc = data.services.find(function (s) { return s.key === key; });
+          if (svc && svc.ok === targetOk) {
+            say((targetOk ? '시작' : '정지') + '이 끝났습니다. 화면을 새로 불러옵니다…',
+                '#8ee89f');
+            setTimeout(function () { location.reload(); }, 800);
+          } else {
+            pollUntil(key, targetOk, tries + 1, btn);
+          }
+        })
+        .catch(function () { pollUntil(key, targetOk, tries + 1, btn); });
+    }, 2000);
+  }
+})();
+</script>
+{% endblock %}

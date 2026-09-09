@@ -1,0 +1,139 @@
+{% extends "_layout.html" %}
+{% block title %}감시지점 관리 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>감시지점 관리 <span style="font-size:.8rem;color:var(--muted);
+      font-weight:400">S-80</span></h2>
+  <p>CCTV 감시 지점을 등록·수정합니다. 지점을 추가하면 ROI 설정도 함께 해야 합니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% for e in errors %}<p class="ug-error" role="alert">{{ e }}</p>{% endfor %}
+
+{% if roi_missing %}
+<div class="ug-card" style="margin-bottom:16px;background:rgba(229,72,77,.08);
+     border-color:rgba(229,72,77,.35)">
+  <h3 style="color:#ff9a9c">ROI 미설정 {{ roi_missing|length }}개소</h3>
+  <p style="margin:0 0 8px;font-size:.9rem">
+    도로 ROI가 없으면 물 면적 판정이 부정확합니다. 아래 지점을 설정하세요.</p>
+  <p style="margin:0">
+    {% for r in roi_missing %}
+    <a href="/settings/roi/{{ r.id }}" class="ug-badge ug-badge--crit"
+       style="margin-right:6px;text-decoration:none">{{ r.name }} 설정 →</a>
+    {% endfor %}</p>
+</div>
+{% endif %}
+
+{% if can_edit %}
+<details class="ug-card" style="margin-bottom:16px">
+  <summary style="cursor:pointer;font-weight:700">+ 감시지점 추가</summary>
+  <form method="post" action="/settings/blocks/create" style="margin-top:14px">
+    <div class="ug-cards" style="--ug-gap:12px;
+         grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+      <div class="ug-field" style="margin:0"><label for="c-id">ID</label>
+        <input id="c-id" name="id" required placeholder="BLOCK-SEOMYEON"
+               pattern="[A-Z][A-Z0-9\-_]{2,63}"></div>
+      <div class="ug-field" style="margin:0"><label for="c-name">지점명</label>
+        <input id="c-name" name="name" required placeholder="서면교차로"></div>
+      <div class="ug-field" style="margin:0"><label for="c-dept">담당 부서</label>
+        <input id="c-dept" name="dept" placeholder="도로관리과"></div>
+      <div class="ug-field" style="margin:0"><label for="c-lat">위도</label>
+        <input id="c-lat" name="lat" required inputmode="decimal" placeholder="35.1578"></div>
+      <div class="ug-field" style="margin:0"><label for="c-lng">경도</label>
+        <input id="c-lng" name="lng" required inputmode="decimal" placeholder="129.0594"></div>
+      <div class="ug-field" style="margin:0"><label for="c-st">영상 소스</label>
+        <select id="c-st" name="source_type" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          {% for v, l in source_types %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
+        </select></div>
+      <div class="ug-field" style="margin:0"><label for="c-url">HLS 주소</label>
+        <input id="c-url" name="source_url" placeholder="https://.../playlist.m3u8"></div>
+      <div class="ug-field" style="margin:0"><label for="c-path">동영상 경로</label>
+        <input id="c-path" name="source_path" placeholder="data/samples/xxx.mp4"></div>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:10px 22px;margin-top:12px">
+      추가</button>
+    <p class="ug-note">영상 소스 종류에 맞는 칸만 채우면 됩니다.
+      추가 후 <b>서비스 재시작</b>과 <b>ROI 설정</b>이 필요합니다.</p>
+  </form>
+</details>
+{% endif %}
+
+<div class="ug-card">
+  <h3>감시지점 {{ rows|length }}개소</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>ID</th><th>지점명</th><th>담당 부서</th><th>좌표</th>
+        <th>영상 소스</th><th>ROI</th><th>인파</th><th>조치</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="font-size:.78rem;color:var(--muted)">{{ r.id }}</td>
+        <td>{{ r.name }}</td>
+        <td>{{ r.dept }}</td>
+        <td style="font-size:.78rem">
+          {% if r.lat is not none %}{{ "%.4f"|format(r.lat) }},
+            {{ "%.4f"|format(r.lng) }}{% else %}—{% endif %}</td>
+        <td style="font-size:.8rem">{{ r.source_label }}</td>
+        <td>
+          {% if r.roi.road %}
+            <span class="ug-badge ug-badge--on">도로 {{ r.roi.road }}</span>
+            {% if r.roi.low %}<span class="ug-badge ug-badge--warn">저지대 {{ r.roi.low }}</span>{% endif %}
+          {% else %}<span class="ug-badge ug-badge--crit">미설정</span>{% endif %}
+        </td>
+        <td>{% if r.has_crowd %}<span class="ug-badge ug-badge--on">있음</span>
+            {% else %}<span class="ug-badge ug-badge--off">—</span>{% endif %}</td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap">
+          <a class="ug-btn ug-btn--ghost" href="/settings/roi/{{ r.id }}"
+             style="padding:4px 10px;font-size:.76rem;text-decoration:none">ROI 설정</a>
+          {% if can_edit %}
+          <details class="ug-popover" style="display:inline-block">
+            <summary class="ug-btn ug-btn--ghost"
+                     style="padding:4px 10px;font-size:.76rem;cursor:pointer;
+                            display:inline-block">수정</summary>
+            <form method="post" action="/settings/blocks/{{ r.id }}/update"
+                  class="ug-popover-panel"
+                  style="position:absolute;z-index:20;margin-top:6px;width:280px">
+              <div style="display:flex;justify-content:space-between;
+                          align-items:center;margin-bottom:10px">
+                <strong style="font-size:.82rem">지점 정보 수정</strong>
+                <button type="button" class="ug-popover-x"
+                        onclick="this.closest('details').removeAttribute('open')"
+                        aria-label="닫기">✕</button>
+              </div>
+              <div class="ug-field"><label>지점명</label>
+                <input name="name" value="{{ r.name }}" required></div>
+              <div class="ug-field"><label>담당 부서</label>
+                <input name="dept" value="{{ r.dept if r.dept != '—' else '' }}"></div>
+              <div class="ug-field"><label>위도</label>
+                <input name="lat" value="{{ r.lat }}" required></div>
+              <div class="ug-field"><label>경도</label>
+                <input name="lng" value="{{ r.lng }}" required></div>
+              <input type="hidden" name="source_type" value="{{ r.source_type }}">
+              <button class="ug-btn" type="submit">저장</button>
+              <p class="ug-note">영상 소스 변경은 파일을 직접 수정하세요.</p>
+            </form>
+          </details>
+          <form method="post" action="/settings/blocks/{{ r.id }}/delete"
+                style="margin:0" onsubmit="return confirm('{{ r.name }} 지점을 삭제합니다. 계속하시겠습니까?')">
+            <button class="ug-btn ug-btn--ghost" type="submit"
+                    style="padding:4px 10px;font-size:.76rem">삭제</button></form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="ug-empty">등록된 지점이 없습니다.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="ug-note">
+    ⚠ 지점 변경은 <b>서비스를 재시작해야 탐지에 반영됩니다.</b> 블록 목록은 기동 시
+    한 번 읽어 파이프라인 스레드가 붙잡고 있기 때문입니다. 저장 전 자동 백업됩니다.
+  </p>
+</div>
+{% endblock %}

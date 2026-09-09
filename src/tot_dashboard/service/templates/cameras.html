@@ -1,0 +1,892 @@
+{% extends "_layout.html" %}
+{% block title %}CCTV 관리 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>CCTV 관리 <span style="font-size:.8rem;color:var(--muted);
+      font-weight:400">S-80</span></h2>
+  <p>CCTV를 등록하고, 탐지서비스별로 탐지 대상을 지정합니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% for e in errors %}<p class="ug-error" role="alert">{{ e }}</p>{% endfor %}
+
+<div class="ug-card" style="margin-bottom:16px;background:var(--panel)">
+  <p style="margin:0;font-size:.88rem">
+    <b>탐지 방식 두 가지</b> —
+    <span class="ug-badge ug-badge--on">상시</span> 파이프라인이 계속 분석합니다.
+    <span class="ug-badge ug-badge--warn">선택</span> 각 탐지 화면에서 카메라를 골라 실행합니다.
+  </p>
+  <p class="ug-note" style="margin:6px 0 0">
+    네 탐지서비스 모두 지점별로 상시 탐지를 켜고 끌 수 있습니다. 분석 주기는
+    부하에 맞춰 다릅니다 — <b>침수</b>는 연속, <b>교통위험</b>은 침수와 같은
+    지점에서 함께 판정, <b>인파</b>는 몇 초 간격 표본,
+    <b>노면</b>은 분 단위 순회입니다.
+    상시로 켠 지점 수만큼 CPU를 쓰므로, 지점을 늘릴 때는 서버 부하를 함께 확인하세요.
+  </p>
+</div>
+
+{# ---------- 일괄 등록 미리보기 (확인 전에는 DB에 넣지 않는다) ---------- #}
+{% if preview %}
+<section class="ug-card" style="margin-bottom:16px;border-color:var(--accent)">
+  <h3>일괄 등록 미리보기
+    <span style="font-size:.8rem;color:var(--muted);font-weight:400">
+      {{ '교통정보 API' if preview_kind == 'api' else '엑셀 업로드' }}</span></h3>
+
+  <p style="margin:0 0 12px;font-size:.9rem">
+    총 <b>{{ preview_summary.total }}</b>건 —
+    <span style="color:#3fb950">신규 {{ preview_summary.new }}</span> ·
+    <span style="color:#d4a017">이미 등록됨 {{ preview_summary.dup }}</span> ·
+    <span style="color:#e5484d">오류 {{ preview_summary.error }}</span>
+  </p>
+
+  <form method="post" action="/settings/cameras/import/apply">
+    <input type="hidden" name="payload" value="{{ preview_payload }}">
+
+    <div style="max-height:420px;overflow:auto;border:1px solid var(--border);
+                border-radius:8px;margin-bottom:12px">
+      <table class="ug-table" style="margin:0">
+        <thead>
+          <tr>
+            <th style="width:34px"><input type="checkbox" id="pick-all"
+                  onclick="togglePick(this)" checked></th>
+            <th>상태</th><th>ID</th><th>이름</th><th>좌표</th><th>소스</th><th>비고</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in preview %}
+          <tr>
+            <td>
+              {% if r._status != 'error' %}
+              <input type="checkbox" name="pick" value="{{ r.id }}"
+                     class="pick" {% if r._status == 'new' %}checked{% endif %}>
+              {% endif %}
+            </td>
+            <td>
+              {% if r._status == 'new' %}
+                <span class="ug-badge ug-badge--on">신규</span>
+              {% elif r._status == 'dup' %}
+                <span class="ug-badge ug-badge--warn">기존</span>
+              {% else %}
+                <span class="ug-badge" style="background:rgba(229,72,77,.18);
+                      color:#ff9ea1">오류</span>
+              {% endif %}
+            </td>
+            <td style="font-size:.76rem">{{ r.id }}</td>
+            <td>{{ r.name }}</td>
+            <td style="font-size:.76rem;color:var(--muted)">
+              {{ '%.4f'|format(r.lat|float) if r.lat is not none and r.lat != '' else '—' }},
+              {{ '%.4f'|format(r.lng|float) if r.lng is not none and r.lng != '' else '—' }}</td>
+            <td style="font-size:.76rem">{{ r.source_type }}</td>
+            <td style="font-size:.74rem;color:{% if r._errors %}#ff9ea1{% else %}var(--muted){% endif %}">
+              {{ r._errors | join(' / ') if r._errors else '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <label style="display:block;font-size:.85rem;margin-bottom:10px">
+      <input type="checkbox" name="update_existing">
+      이미 등록된 ID는 <b>내용을 덮어씁니다</b>
+      <span style="color:var(--muted)">— 체크하지 않으면 건너뜁니다</span>
+    </label>
+    <p class="ug-note" style="margin-top:0">
+      ⚠ 오류 행은 등록되지 않습니다. 탐지서비스 지정은 등록 후 「탐지 지정」에서
+      하거나, 엑셀의 사용·상시 열로 함께 넣을 수 있습니다.
+    </p>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="ug-btn" type="submit" style="width:auto;padding:11px 26px">
+        선택한 항목 등록</button>
+      <a href="/settings/cameras" class="ug-btn ug-btn--ghost"
+         style="width:auto;padding:11px 22px;text-decoration:none;
+                display:inline-flex;align-items:center">취소</a>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+{% if can_edit %}
+<details class="ug-card" style="margin-bottom:16px">
+  <summary style="cursor:pointer;font-weight:700">⇪ 일괄 등록 · 내려받기</summary>
+
+  <div class="ug-cards" style="--ug-gap:14px;margin-top:14px;
+       grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+
+    <div>
+      <h4 style="margin:0 0 8px;font-size:.94rem">① 교통 CCTV 자동 수집</h4>
+      <form method="post" action="/settings/cameras/import/fetch">
+        <div class="ug-field">
+          <label for="region">지역</label>
+          <select id="region" name="region" style="width:100%;padding:10px;
+                  background:var(--bg);color:var(--text);
+                  border:1px solid var(--border);border-radius:8px">
+            {% for key, label in regions %}
+            <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="ug-field">
+          <label for="min_height">최소 해상도</label>
+          <select id="min_height" name="min_height" style="width:100%;padding:10px;
+                  background:var(--bg);color:var(--text);
+                  border:1px solid var(--border);border-radius:8px">
+            <option value="0">제한 없음</option>
+            <option value="720" selected>HD(720p) 이상</option>
+            <option value="1080">FHD(1080p) 이상</option>
+          </select>
+        </div>
+        <button class="ug-btn" type="submit" {% if not has_api_key %}disabled{% endif %}>
+          불러오기</button>
+      </form>
+      {% if not has_api_key %}
+      <p class="ug-error" role="alert" style="margin-top:10px;font-size:.8rem">
+        교통정보 API 키가 없습니다. openapi.its.go.kr 에서 발급받아
+        <code>.env</code> 의 <code>ITS_API_KEY</code> 에 넣고 재시작하세요.</p>
+      {% endif %}
+      <p class="ug-note" style="margin-top:8px">
+        국가교통정보센터에서 <b>실시간 스트리밍 CCTV</b>만 가져옵니다.<br>
+        ⚠ <b>방범 CCTV는 받을 수 없습니다</b> — 지자체 통합관제센터 전용망으로만
+        흐르며 외부 제공 창구가 없습니다.
+      </p>
+    </div>
+
+    <div>
+      <h4 style="margin:0 0 8px;font-size:.94rem">
+        ② 서울 CCTV 수집 <span class="ug-badge">키 불필요</span></h4>
+      <form method="post" action="/settings/cameras/import/seoul">
+        <div class="ug-field">
+          <label for="seoul_filter">지점명 걸러내기 (선택)</label>
+          <input id="seoul_filter" name="name_filter" type="text"
+                 placeholder="예: 남산 · 강남 · 대교"
+                 style="width:100%;padding:10px;background:var(--bg);color:var(--text);
+                        border:1px solid var(--border);border-radius:8px">
+        </div>
+        <div class="ug-field">
+          <label for="seoul_max">최대 지점 수</label>
+          <select id="seoul_max" name="max_count" style="width:100%;padding:10px;
+                  background:var(--bg);color:var(--text);
+                  border:1px solid var(--border);border-radius:8px">
+            <option value="10">10개소</option>
+            <option value="20" selected>20개소</option>
+            <option value="40">40개소</option>
+            <option value="60">60개소</option>
+          </select>
+        </div>
+        <button class="ug-btn" type="submit">불러오기</button>
+      </form>
+      <p class="ug-note" style="margin-top:8px">
+        서울시 교통정보시스템(TOPIS) <b>510개소</b>에서 가져옵니다. 인증키가
+        필요 없습니다.<br>
+        ⚠ <b>화질은 API가 알려주지 않습니다</b> — 등록 뒤
+        <code>probe_cctv_resolution.py</code> 로 실측하세요.<br>
+        ⚠ <b>상시 탐지로 켜기 전 연계 협의가 필요합니다</b> — 고정적 다중 접속은
+        차단될 수 있습니다.
+      </p>
+    </div>
+
+    <div>
+      <h4 style="margin:0 0 8px;font-size:.94rem">③ 엑셀로 일괄 등록</h4>
+      <form method="post" action="/settings/cameras/import/excel"
+            enctype="multipart/form-data">
+        <div class="ug-field">
+          <label for="file">엑셀 파일 (.xlsx)</label>
+          <input id="file" name="file" type="file" accept=".xlsx,.xlsm" required
+                 style="width:100%;padding:9px;background:var(--bg);color:var(--text);
+                        border:1px solid var(--border);border-radius:8px">
+        </div>
+        <button class="ug-btn" type="submit">읽어들이기</button>
+      </form>
+      <p class="ug-note" style="margin-top:8px">
+        <a href="/settings/cameras/template.xlsx" style="color:var(--accent)"
+          >양식 내려받기</a> — 열 설명과 예시가 들어 있습니다. 5MB 이하.
+      </p>
+    </div>
+
+    <div>
+      <h4 style="margin:0 0 8px;font-size:.94rem">④ 현재 목록 내려받기</h4>
+      <a href="/settings/cameras/export.xlsx" class="ug-btn"
+         style="text-decoration:none;display:inline-flex;align-items:center;
+                justify-content:center">엑셀로 내려받기</a>
+      <p class="ug-note" style="margin-top:8px">
+        등록된 CCTV·영상 전체와 탐지서비스 지정·ROI 현황이 들어갑니다.<br>
+        <b>업로드 양식과 열이 같습니다</b> — 받아서 고친 뒤 그대로 다시 올리면 됩니다.
+      </p>
+    </div>
+  </div>
+</details>
+
+<details class="ug-card" style="margin-bottom:16px">
+  <summary style="cursor:pointer;font-weight:700">
+    ⛬ 지역별 등록 현황 · 일괄 해지</summary>
+
+  <p class="ug-note" style="margin-top:12px">
+    지역은 <b>좌표에서 판정</b>합니다. 따로 저장하지 않으므로 좌표를 고치면
+    지역도 함께 바뀝니다.
+  </p>
+
+  <div class="ug-cards" style="--ug-gap:12px;margin-top:12px;
+       grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+    {% for g in region_groups %}
+    <div style="border:1px solid var(--border);border-radius:var(--ug-radius);
+                padding:12px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;
+                  gap:8px;margin-bottom:10px">
+        <a href="/settings/cameras?region={{ g.key or 'none' }}"
+           style="color:var(--text);text-decoration:none"><b>{{ g.label }}</b></a>
+        <span class="ug-badge">{{ g.count }}대</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">
+        {% for name, n in g.sigungu %}
+        <a href="/settings/cameras?region={{ g.key or 'none' }}&sigungu={% if name == '구·군 미지정' %}none{% else %}{{ name }}{% endif %}"
+           class="ug-badge {% if name == '구·군 미지정' %}ug-badge--off{% endif %}"
+           style="font-size:.7rem;text-decoration:none">{{ name }} {{ n }}</a>
+        {% endfor %}
+      </div>
+      {% if can_edit %}
+      <form method="post" action="/settings/cameras/region/delete">
+        <input type="hidden" name="region" value="{{ g.key }}">
+        <div class="ug-field" style="margin:0 0 8px">
+          <label for="rc-{{ loop.index }}" style="font-size:.78rem">
+            해지하려면 <b>{{ g.label }}</b> 입력</label>
+          <input id="rc-{{ loop.index }}" name="confirm" autocomplete="off"
+                 placeholder="{{ g.label }}"
+                 style="width:100%;padding:9px;background:var(--bg);
+                        color:var(--text);border:1px solid var(--border);
+                        border-radius:8px">
+        </div>
+        <button class="ug-btn ug-btn--ghost" type="submit"
+                style="width:100%">{{ g.count }}대 해지</button>
+      </form>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="ug-note">등록된 지점이 없습니다.</p>
+    {% endfor %}
+  </div>
+
+  {% if can_edit %}
+  <p class="ug-note" style="margin-top:12px">
+    ⚠ 해지하면 <b>ROI·캘리브레이션 설정도 함께 지워집니다.</b> 되돌릴 수
+    없습니다. 모든 지점을 한 번에 해지할 수는 없습니다.
+  </p>
+  {% endif %}
+</details>
+
+<details class="ug-card" style="margin-bottom:16px">
+  <summary style="cursor:pointer;font-weight:700">+ CCTV 등록</summary>
+  <form method="post" action="/settings/cameras/create" style="margin-top:14px"
+        enctype="multipart/form-data">
+    <div class="ug-cards" style="--ug-gap:12px;
+         grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">
+      <div class="ug-field" style="margin:0"><label for="c-id">ID</label>
+        <input id="c-id" name="id" required placeholder="CAM-SEOMYEON"
+               pattern="[A-Z][A-Z0-9\-_]{2,63}"></div>
+      <div class="ug-field" style="margin:0"><label for="c-name">이름</label>
+        <input id="c-name" name="name" required placeholder="서면교차로"></div>
+      <div class="ug-field" style="margin:0"><label for="c-dept">담당 부서</label>
+        <input id="c-dept" name="dept" placeholder="도로관리과"></div>
+      <div class="ug-field" style="margin:0"><label for="c-sido">시/도</label>
+        <select id="c-sido" name="sido" data-sigungu="c-sigungu"
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px">
+          <option value="">— 선택 안 함 (좌표로 채움) —</option>
+          {% for key, label in sido_choices %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="ug-field" style="margin:0"><label for="c-sigungu">구/군</label>
+        <select id="c-sigungu" name="sigungu"
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px">
+          <option value="">— 시/도를 먼저 고르세요 —</option>
+        </select></div>
+      <div class="ug-field" style="margin:0"><label for="c-lat">위도</label>
+        <input id="c-lat" name="lat" required inputmode="decimal" placeholder="35.1578"></div>
+      <div class="ug-field" style="margin:0"><label for="c-lng">경도</label>
+        <input id="c-lng" name="lng" required inputmode="decimal" placeholder="129.0594"></div>
+      <div class="ug-field" style="margin:0"><label for="c-st">영상 소스</label>
+        <select id="c-st" name="source_type" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          {% for v, l in source_types %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
+        </select></div>
+      <div class="ug-field" style="margin:0"><label for="c-url">HLS 주소</label>
+        <input id="c-url" name="source_url" placeholder="https://.../playlist.m3u8"></div>
+      <div class="ug-field" style="margin:0"><label for="c-path">동영상 경로</label>
+        <input id="c-path" name="source_path" placeholder="data/samples/xxx.mp4"></div>
+    </div>
+
+    <div class="ug-field" style="margin-top:12px">
+      <label for="c-video">동영상 파일 올리기 <span style="color:var(--muted);
+        font-weight:400">— 경로를 직접 적는 대신 파일을 올릴 수 있습니다</span></label>
+      <input id="c-video" name="video_file" type="file"
+             accept=".mp4,.avi,.mov,.mkv,.webm"
+             style="width:100%;padding:9px;background:var(--bg);color:var(--text);
+                    border:1px solid var(--border);border-radius:8px">
+      <p class="ug-note" style="margin:6px 0 0">
+        올리면 <b>소스 종류가 「동영상 파일」로 바뀌고 경로가 자동으로 채워집니다</b>.
+        mp4·avi·mov·mkv·webm · 최대 500MB.
+      </p>
+    </div>
+
+    <fieldset style="border:1px solid var(--border);border-radius:8px;
+                     padding:12px 14px;margin:14px 0">
+      <legend style="color:var(--muted);font-size:.82rem;padding:0 6px">
+        탐지서비스 지정</legend>
+      <div style="display:flex;gap:22px;flex-wrap:wrap">
+        {% for dv, dl in domain_order %}
+        <div>
+          <label style="display:block;font-size:.9rem;font-weight:700">
+            <input type="checkbox" name="use_{{ dv }}"
+                   {% if dv == 'flood' %}checked{% endif %}> {{ dl }}</label>
+          <label style="display:block;font-size:.8rem;color:var(--muted);
+                        margin-left:18px">
+            <input type="checkbox" name="cont_{{ dv }}"
+                   {% if dv == 'flood' %}checked{% endif %}> 상시 탐지</label>
+        </div>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <button class="ug-btn" type="submit" style="width:auto;padding:10px 22px">등록</button>
+    <p class="ug-note">등록 후 <b>ROI 설정</b>과 <b>서비스 재시작</b>이 필요합니다.</p>
+  </form>
+</details>
+
+{# 인접 관계 자동 생성 (관계 모델 1단계).
+   근거 — 경남 제안요청서 기대효과 「시·군 경계를 넘나드는 재난을 연속 추적」,
+   KT GiGAeyes 통상사양 「알람 발생 카메라 주변 다중 카메라 자동 확인」. #}
+<details class="ug-card" style="margin-bottom:16px">
+  <summary style="cursor:pointer;font-weight:600">인접 관계 자동 생성</summary>
+  <p class="ug-note" style="margin-top:10px">
+    좌표가 가까운 지점끼리 <b>인접</b> 관계를 만듭니다. 이벤트가 났을 때
+    <b>주변 지점을 함께 띄우는 데</b> 쓰입니다.
+  </p>
+  <p class="ug-note">
+    ⚠ 자동 생성분만 교체하며, <b>사람이 지정한 상·하류 관계는 그대로 둡니다</b>
+    — 상·하류는 좌표로 알 수 없어 복원할 방법이 없습니다.
+  </p>
+  <form method="post" action="/settings/cameras/links/build"
+        style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <div class="ug-field" style="margin:0;max-width:220px">
+      <label for="lk-radius">인접 판정 반경 (50~5000m)</label>
+      <input id="lk-radius" name="radius_m" value="500" inputmode="numeric"></div>
+    <button class="ug-btn" type="submit" name="preview" value="1"
+            style="width:auto;padding:10px 18px">미리보기</button>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 18px">생성</button>
+  </form>
+  <p class="ug-note">
+    반경은 <b>가정이며 실측이 아닙니다</b> — 지자체마다 CCTV 간격이 다릅니다.
+    먼저 <b>미리보기</b>로 몇 건이 생기는지 확인하세요.
+  </p>
+</details>
+
+{# 상·하류 지정 — 선행 경고의 근거가 되는 관계.
+   ⚠️ 좌표로는 알 수 없어 사람이 넣는다. 지형과 배수 계통을 봐야 안다. #}
+<details class="ug-card" style="margin-bottom:16px">
+  <summary style="cursor:pointer;font-weight:600">
+    상·하류 지정 <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+      {{ flow_pairs|length }}쌍</span></summary>
+  <p class="ug-note" style="margin-top:10px">
+    물이 흐르는 순서를 지정합니다. <b>상류에서 「경계」 이상 사건이 열리면
+    하류 지점에 선행 경고가 뜹니다</b> — 잠기기 전에 대비할 수 있습니다.
+  </p>
+  <p class="ug-note">
+    ⚠ 좌표로는 알 수 없습니다. 지형과 배수 계통을 아는 담당자가 지정해야 합니다.
+  </p>
+  <form method="post" action="/settings/cameras/links/flow"
+        style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <div class="ug-field" style="margin:0;min-width:200px">
+      <label for="fl-up">상류 (먼저 잠기는 곳)</label>
+      <select id="fl-up" name="upper_id" style="width:100%;padding:9px;
+              background:var(--bg);color:var(--text);
+              border:1px solid var(--border);border-radius:8px">
+        {% for cam in cams %}<option value="{{ cam.id }}">{{ cam.name }}</option>{% endfor %}
+      </select></div>
+    <div class="ug-field" style="margin:0;min-width:200px">
+      <label for="fl-dn">하류 (나중에 잠기는 곳)</label>
+      <select id="fl-dn" name="lower_id" style="width:100%;padding:9px;
+              background:var(--bg);color:var(--text);
+              border:1px solid var(--border);border-radius:8px">
+        {% for cam in cams %}<option value="{{ cam.id }}">{{ cam.name }}</option>{% endfor %}
+      </select></div>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 18px">지정</button>
+  </form>
+
+  {% if flow_pairs %}
+  <table class="ug-table" style="margin-top:14px">
+    <thead><tr><th>상류</th><th>하류</th><th style="width:80px"></th></tr></thead>
+    <tbody>
+      {% for p in flow_pairs %}
+      <tr>
+        <td>{{ p.upper_name }}<br>
+          <span style="font-size:.75rem;color:var(--muted)">{{ p.upper_id }}</span></td>
+        <td>{{ p.lower_name }}<br>
+          <span style="font-size:.75rem;color:var(--muted)">{{ p.lower_id }}</span></td>
+        <td>
+          <form method="post" action="/settings/cameras/links/flow">
+            <input type="hidden" name="upper_id" value="{{ p.upper_id }}">
+            <input type="hidden" name="lower_id" value="{{ p.lower_id }}">
+            <button class="ug-btn" type="submit" name="remove" value="1"
+                    style="width:auto;padding:6px 12px;font-size:.8rem">해제</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</details>
+{% endif %}
+
+<div class="ug-card">
+  <h3>등록된 CCTV
+    {% if sel_sido %}<span style="color:var(--accent)">{{ rows|length }}</span>
+      / {{ total_rows }}개소
+      <span style="font-weight:400;font-size:.8rem;color:var(--muted)">
+        · {{ sel_label }}</span>
+    {% else %}{{ total_rows }}개소{% endif %}
+  </h3>
+
+  {# 도메인별 사용 현황 — 등록만 됐는지, 4개 탐지서비스 중 실제로 쓰이는
+     곳은 몇 곳인지는 별개다. 지역 필터와 무관하게 항상 전체 기준(위
+     routes_cameras.py 주석 참고). #}
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+              gap:10px;margin:2px 0 16px">
+    {% for s in domain_stats %}
+    <div style="border:1px solid var(--border);border-radius:8px;
+                padding:10px 12px;background:var(--bg)">
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:4px">
+        {{ s.label }}</div>
+      <div style="font-size:1.3rem;font-weight:700;line-height:1.2">
+        {{ s.enabled }}<span style="font-size:.72rem;font-weight:400;
+           color:var(--muted)">개소</span></div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:2px">
+        <span class="ug-badge ug-badge--on" style="padding:1px 6px">상시 {{ s.continuous }}</span>
+        <span class="ug-badge ug-badge--warn" style="padding:1px 6px">선택 {{ s.selective }}</span>
+      </div>
+    </div>
+    {% endfor %}
+
+    {# 화질 현황 요약(2026-08-30) — 손상 카메라를 "사용자가 우연히
+       제보"가 아니라 이 화면을 열기만 해도 알 수 있게 한다. #}
+    <div style="border:1px solid var(--border);border-radius:8px;
+                padding:10px 12px;background:var(--bg)">
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:4px">화질
+        {% if not quality_stats.enabled %}
+        <span title="설정 video_quality.enabled를 켜야 스캔이 시작됩니다">(감시 꺼짐)</span>
+        {% endif %}
+      </div>
+      <div style="font-size:1.3rem;font-weight:700;line-height:1.2">
+        {{ quality_stats.on }}<span style="font-size:.72rem;font-weight:400;
+           color:var(--muted)">정상</span></div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:2px">
+        <span class="ug-badge ug-badge--warn" style="padding:1px 6px">주의 {{ quality_stats.warn }}</span>
+        <span class="ug-badge ug-badge--crit" style="padding:1px 6px">손상 심각 {{ quality_stats.crit }}</span>
+        <span class="ug-badge ug-badge--off" style="padding:1px 6px">미측정 {{ quality_stats.unmeasured }}</span>
+      </div>
+    </div>
+  </div>
+
+  {# 지역으로 목록을 좁힌다. 선택은 저장 뒤 다시 그릴 때도 유지된다. #}
+  <form method="get" action="/settings/cameras"
+        style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+               margin-bottom:12px">
+    <select name="region" onchange="this.form.submit()"
+            style="padding:8px 10px;background:var(--bg);color:var(--text);
+                   border:1px solid var(--border);border-radius:8px;
+                   font-size:.82rem;max-width:100%">
+      <option value="">전체 ({{ total_rows }})</option>
+      {% for g in region_groups %}
+      <option value="{{ g.key or 'none' }}"
+        {% if (g.key or 'none') == sel_sido %}selected{% endif %}>
+        {{ g.label }} ({{ g.count }})</option>
+      {% endfor %}
+    </select>
+
+    {% if sel_sido %}
+    <select name="sigungu" onchange="this.form.submit()"
+            style="padding:8px 10px;background:var(--bg);color:var(--text);
+                   border:1px solid var(--border);border-radius:8px;
+                   font-size:.82rem;max-width:100%">
+      <option value="">구·군 전체</option>
+      {% for g in region_groups if (g.key or 'none') == sel_sido %}
+        {% for name, n in g.sigungu %}
+        <option value="{% if name == '구·군 미지정' %}none{% else %}{{ name }}{% endif %}"
+          {% if (name == '구·군 미지정' and sel_gu == 'none') or name == sel_gu %}selected{% endif %}>
+          {{ name }} ({{ n }})</option>
+        {% endfor %}
+      {% endfor %}
+    </select>
+    <a class="ug-btn ug-btn--ghost" href="/settings/cameras"
+       style="padding:7px 12px;font-size:.78rem">전체 보기</a>
+    {% endif %}
+  </form>
+
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>ID / 이름</th><th>소스</th>
+        {% for dv, dl in domain_order %}<th>{{ dl }}</th>{% endfor %}
+        <th>ROI</th><th>화질</th><th>조치</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      {% set cam = r.cam %}
+      <tr>
+        <td>
+          <div style="font-weight:700">{{ cam.name }}</div>
+          <div style="font-size:.74rem;color:var(--muted)">{{ cam.id }}
+            · {{ r.region }}
+            {% if not cam.is_active %}· <span style="color:#ff9a9c">비활성</span>{% endif %}</div>
+        </td>
+        <td style="font-size:.78rem">{{ cam.source_type }}</td>
+
+        {% for dv, dl in domain_order %}
+        {% set s = r.domains[dv] %}
+        <td>
+          {% if not s.enabled %}
+            <span class="ug-badge ug-badge--off">미사용</span>
+          {% elif s.continuous %}
+            <span class="ug-badge ug-badge--on">상시</span>
+          {% else %}
+            <span class="ug-badge ug-badge--warn">선택</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+
+        <td style="font-size:.76rem">
+          {% for dv, dl in domain_order %}
+            {% set st = r.roi.get(dv) %}
+            {% if r.domains[dv].enabled %}
+              {% if st and st.ok %}
+                <span class="ug-badge ug-badge--on">{{ dl[:2] }}</span>
+              {% else %}
+                <span class="ug-badge ug-badge--crit">{{ dl[:2] }}</span>
+              {% endif %}
+            {% elif st and st.exists %}
+              {# 탐지 지정은 꺼졌지만 ROI 는 보관 중이다. 아무 표시도 안 하면
+                 「지워졌다」로 읽혀 운영자가 다시 그리게 된다. #}
+              <span class="ug-badge ug-badge--off"
+                    title="탐지 미지정 · 설정한 영역은 보관 중입니다">{{ dl[:2] }} 보관</span>
+            {% endif %}
+          {% endfor %}
+        </td>
+
+        {# 상시 화질 감시(2026-08-30) — core/video_quality.py가 재배포
+           경로를 저빈도로 재서 매긴 등급. 스캐너를 켠 적 없거나 아직
+           이 카메라를 못 잰 경우 "미측정"으로 정직하게 표시한다. #}
+        <td style="font-size:.76rem" title="{% if not quality_stats.enabled %}상시 화질 감시가 꺼져 있습니다{% endif %}">
+          <span class="ug-badge ug-badge--{{ r.quality.badge }}">{{ r.quality.label }}</span>
+        </td>
+
+        <td style="display:flex;gap:6px;flex-wrap:wrap">
+          <a class="ug-btn ug-btn--ghost" href="/settings/cameras/{{ cam.id }}/roi"
+             style="padding:4px 10px;font-size:.76rem;text-decoration:none">ROI</a>
+          {% if can_edit %}
+          <details class="ug-popover" style="display:inline-block">
+            <summary class="ug-btn ug-btn--ghost" style="padding:4px 10px;
+                     font-size:.76rem;cursor:pointer;display:inline-block">탐지 지정</summary>
+            <form method="post" action="/settings/cameras/{{ cam.id }}/domains"
+                  class="ug-popover-panel"
+                  style="position:absolute;z-index:20;margin-top:6px;width:250px">
+              <div style="display:flex;justify-content:space-between;
+                          align-items:center;margin-bottom:10px">
+                <strong style="font-size:.82rem">탐지 지정</strong>
+                <button type="button" class="ug-popover-x"
+                        onclick="this.closest('details').removeAttribute('open')"
+                        aria-label="닫기">✕</button>
+              </div>
+              {% for dv, dl in domain_order %}
+              {% set s = r.domains[dv] %}
+              <div style="margin-bottom:10px">
+                <label style="display:block;font-size:.88rem;font-weight:700">
+                  <input type="checkbox" name="use_{{ dv }}"
+                         {% if s.enabled %}checked{% endif %}> {{ dl }}</label>
+                <label style="display:block;font-size:.78rem;color:var(--muted);
+                              margin-left:18px">
+                  <input type="checkbox" name="cont_{{ dv }}"
+                         {% if s.continuous %}checked{% endif %}> 상시 탐지</label>
+              </div>
+              {% endfor %}
+              <button class="ug-btn" type="submit">저장</button>
+            </form>
+          </details>
+
+          {# ── 지점별 캘리브레이션 ──────────────────────────────────
+             국내외 안전 기준은 전부 물리 단위(명/㎡·침수심 cm·구간 단위)인데
+             우리가 재는 것은 화면 단위(%·개수)다. 그 간극을 여기서 메운다.
+             보정 전에는 화면이 「미보정」으로 표시되며 보정한 척하지 않는다. #}
+          <details class="ug-popover" style="display:inline-block">
+            <summary class="ug-btn ug-btn--ghost" style="padding:4px 10px;
+                     font-size:.76rem;cursor:pointer;display:inline-block">
+              보정
+              {% set c = r.calibration %}
+              {% if c.crowd.ground or c.flood.depth or c.road.section or c.traffic.ground %}
+                <span class="ug-badge ug-badge--on" style="margin-left:4px">완료</span>
+              {% else %}
+                <span class="ug-badge ug-badge--off" style="margin-left:4px">미보정</span>
+              {% endif %}
+            </summary>
+            <div class="ug-popover-panel"
+                 style="position:absolute;z-index:20;margin-top:6px;
+                        width:340px;max-width:92vw">
+              <div style="display:flex;justify-content:space-between;
+                          align-items:center;margin-bottom:4px">
+                <strong style="font-size:.82rem">보정</strong>
+                <button type="button" class="ug-popover-x"
+                        onclick="this.closest('details').removeAttribute('open')"
+                        aria-label="닫기">✕</button>
+              </div>
+              <p style="margin:0 0 10px;font-size:.78rem;color:var(--muted)">
+                화면 단위를 <b>실제 물리 단위</b>로 바꾸는 값입니다. 이게 있어야
+                국내외 기준(명/㎡ · 침수심 cm · 구간 단위)과 연결됩니다.</p>
+
+              <!-- 노면: 구간 길이 -->
+              <form method="post" action="/settings/cameras/{{ cam.id }}/calibration"
+                    style="margin-bottom:14px">
+                <input type="hidden" name="domain" value="road">
+                <p style="margin:0 0 4px;font-size:.82rem;font-weight:700">
+                  노면 — 담당 구간 길이</p>
+                <p style="margin:0 0 6px;font-size:.74rem;color:var(--muted)">
+                  이 CCTV 가 보는 도로 구간 길이(m). 넣으면 「건/100m」로 바뀌어
+                  지점끼리 비교됩니다.</p>
+                <input name="section_length_m" type="number" step="1" min="1"
+                       placeholder="예: 150"
+                       value="{{ r.calibration.road.section or '' }}"
+                       style="width:100%;padding:8px 10px;background:var(--bg);
+                              color:var(--text);border:1px solid var(--border);
+                              border-radius:8px;font-size:.82rem">
+                <button class="ug-btn" type="submit"
+                        style="width:100%;margin-top:6px;padding:7px">저장</button>
+              </form>
+
+              <!-- 인파: 지면 평면 -->
+              <form method="post" action="/settings/cameras/{{ cam.id }}/calibration"
+                    style="margin-bottom:14px">
+                <input type="hidden" name="domain" value="crowd">
+                <p style="margin:0 0 4px;font-size:.82rem;font-weight:700">
+                  인파 — 지면 평면 (명/㎡)</p>
+                <p style="margin:0 0 6px;font-size:.74rem;color:var(--muted)">
+                  화면의 <b>직사각형 네 점</b>과 그 실제 바닥 좌표(m). 횡단보도·
+                  보도블록 등 현장에서 한 번 재면 됩니다.</p>
+                <textarea name="ground_image_points" rows="2"
+                          placeholder='화면 좌표 [[0,0],[100,0],[100,100],[0,100]]'
+                          style="width:100%;padding:7px 9px;background:var(--bg);
+                                 color:var(--text);border:1px solid var(--border);
+                                 border-radius:8px;font:inherit;font-size:.74rem"
+                  >{{ r.calibration.crowd.raw.get('ground', {}).get('image_points', '') or '' }}</textarea>
+                <textarea name="ground_world_points" rows="2"
+                          placeholder='실제 좌표(m) [[0,0],[5,0],[5,5],[0,5]]'
+                          style="width:100%;margin-top:4px;padding:7px 9px;
+                                 background:var(--bg);color:var(--text);
+                                 border:1px solid var(--border);border-radius:8px;
+                                 font:inherit;font-size:.74rem"
+                  >{{ r.calibration.crowd.raw.get('ground', {}).get('world_points', '') or '' }}</textarea>
+                <button class="ug-btn" type="submit"
+                        style="width:100%;margin-top:6px;padding:7px">저장</button>
+              </form>
+
+              <!-- 교통: 지면 평면 (km/h) -->
+              <!-- 2026-08-26 — 예전에는 이 칸이 없어 속도(km/h)가 항상
+                   가짜 고정계수(mpp=0.06)였다(docs/202608260842/ 계획
+                   Phase 2, 결함 시정). 인파와 같은 지면 평면 방식이다 —
+                   차로 위 직사각형 하나만 재면 된다. -->
+              <form method="post" action="/settings/cameras/{{ cam.id }}/calibration"
+                    style="margin-bottom:14px">
+                <input type="hidden" name="domain" value="traffic">
+                <p style="margin:0 0 4px;font-size:.82rem;font-weight:700">
+                  교통 — 지면 평면 (km/h)</p>
+                <p style="margin:0 0 6px;font-size:.74rem;color:var(--muted)">
+                  화면의 <b>직사각형 네 점</b>과 그 실제 바닥 좌표(m). 차로
+                  위 표지판 간격·정지선 등 현장에서 한 번 재면 됩니다.
+                  <b>보정 전에는 속도가 「—(미보정)」으로 표시</b>됩니다 —
+                  가짜 값을 보여주지 않습니다.</p>
+                <textarea name="ground_image_points" rows="2"
+                          placeholder='화면 좌표 [[0,0],[100,0],[100,100],[0,100]]'
+                          style="width:100%;padding:7px 9px;background:var(--bg);
+                                 color:var(--text);border:1px solid var(--border);
+                                 border-radius:8px;font:inherit;font-size:.74rem"
+                  >{{ r.calibration.traffic.raw.get('ground', {}).get('image_points', '') or '' }}</textarea>
+                <textarea name="ground_world_points" rows="2"
+                          placeholder='실제 좌표(m) [[0,0],[5,0],[5,5],[0,5]]'
+                          style="width:100%;margin-top:4px;padding:7px 9px;
+                                 background:var(--bg);color:var(--text);
+                                 border:1px solid var(--border);border-radius:8px;
+                                 font:inherit;font-size:.74rem"
+                  >{{ r.calibration.traffic.raw.get('ground', {}).get('world_points', '') or '' }}</textarea>
+                <button class="ug-btn" type="submit"
+                        style="width:100%;margin-top:6px;padding:7px">저장</button>
+              </form>
+
+              <!-- 침수: 침수심 대응표 -->
+              <form method="post" action="/settings/cameras/{{ cam.id }}/calibration">
+                <input type="hidden" name="domain" value="flood">
+                <p style="margin:0 0 4px;font-size:.82rem;font-weight:700">
+                  침수 — 침수심 대응표 (cm)</p>
+                <p style="margin:0 0 6px;font-size:.74rem;color:var(--muted)">
+                  <b>[면적비, 침수심cm]</b> 관측점 2개 이상. 화면 안에 수위표를
+                  세우고 물이 찰 때 몇 점 기록하면 만들어집니다.</p>
+                <textarea name="depth_points" rows="2"
+                          placeholder='[[0,0],[0.1,5],[0.3,20]]'
+                          style="width:100%;padding:7px 9px;background:var(--bg);
+                                 color:var(--text);border:1px solid var(--border);
+                                 border-radius:8px;font:inherit;font-size:.74rem"
+                  >{{ r.calibration.flood.raw.get('depth', {}).get('points', '') or '' }}</textarea>
+                <button class="ug-btn" type="submit"
+                        style="width:100%;margin-top:6px;padding:7px">저장</button>
+              </form>
+
+              <p style="margin:10px 0 0;font-size:.72rem;color:var(--muted)">
+                보정하지 않으면 화면이 <b>「미보정」</b>으로 표시됩니다 —
+                보정한 척하지 않습니다.</p>
+            </div>
+          </details>
+
+          <details class="ug-popover" style="display:inline-block">
+            <summary class="ug-btn ug-btn--ghost" style="padding:4px 10px;
+                     font-size:.76rem;cursor:pointer;display:inline-block">수정</summary>
+            <form method="post" action="/settings/cameras/{{ cam.id }}/update"
+                  class="ug-popover-panel"
+                  style="position:absolute;z-index:20;margin-top:6px;width:280px">
+              <div style="display:flex;justify-content:space-between;
+                          align-items:center;margin-bottom:10px">
+                <strong style="font-size:.82rem">CCTV 정보 수정</strong>
+                <button type="button" class="ug-popover-x"
+                        onclick="this.closest('details').removeAttribute('open')"
+                        aria-label="닫기">✕</button>
+              </div>
+              <div class="ug-field"><label>이름</label>
+                <input name="name" value="{{ cam.name }}" required></div>
+              <div class="ug-field"><label>담당 부서</label>
+                <input name="dept" value="{{ cam.dept }}"></div>
+              <div class="ug-field"><label>시/도</label>
+                <select name="sido" data-sigungu="e-sigungu-{{ cam.id }}"
+                        style="width:100%;padding:9px;background:var(--bg);
+                               color:var(--text);border:1px solid var(--border);
+                               border-radius:8px">
+                  <option value="">— 선택 안 함 —</option>
+                  {% for key, label in sido_choices %}
+                  <option value="{{ key }}"
+                    {% if cam.sido == key %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select></div>
+              <div class="ug-field"><label>구/군</label>
+                <select id="e-sigungu-{{ cam.id }}" name="sigungu"
+                        data-current="{{ cam.sigungu }}"
+                        style="width:100%;padding:9px;background:var(--bg);
+                               color:var(--text);border:1px solid var(--border);
+                               border-radius:8px">
+                  <option value="">— 미지정 —</option>
+                </select></div>
+              <div class="ug-field"><label>위도</label>
+                <input name="lat" value="{{ cam.lat }}" required></div>
+              <div class="ug-field"><label>경도</label>
+                <input name="lng" value="{{ cam.lng }}" required></div>
+              {# 방향 정보 — 사각지대 분석(S-63)의 선행 조건.
+                 ⚠️ 모르면 비워 둔다. 0 으로 채우면 「전부 북쪽을 본다」가 되어
+                 커버리지가 통째로 거짓이 된다. #}
+              <div class="ug-field"><label>방위각 (0~359°, 모르면 비움)</label>
+                <input name="bearing_deg" inputmode="numeric"
+                       value="{{ cam.bearing_deg if cam.bearing_deg is not none else '' }}"
+                       placeholder="북 0 · 동 90 · 남 180 · 서 270"></div>
+              <div class="ug-field"><label>상하각 (-90~90°)</label>
+                <input name="tilt_deg" inputmode="numeric"
+                       value="{{ cam.tilt_deg if cam.tilt_deg is not none else '' }}"
+                       placeholder="내려보면 음수"></div>
+              <div class="ug-field"><label>화각 (1~360°)</label>
+                <input name="fov_deg" inputmode="numeric"
+                       value="{{ cam.fov_deg if cam.fov_deg is not none else '' }}"
+                       placeholder="예: 90"></div>
+              <div class="ug-field"><label>설치 목적</label>
+                <select name="purpose"
+                        style="width:100%;padding:9px;background:var(--bg);
+                               color:var(--text);border:1px solid var(--border);
+                               border-radius:8px">
+                  <option value="">— 미지정 —</option>
+                  {% for v, l in purposes %}
+                  <option value="{{ v }}"{% if cam.purpose == v %} selected{% endif %}>{{ l }}</option>
+                  {% endfor %}
+                </select></div>
+              <div class="ug-field"><label>HLS 주소</label>
+                <input name="source_url" value="{{ cam.source_url }}"></div>
+              <input type="hidden" name="source_type" value="{{ cam.source_type }}">
+              <input type="hidden" name="source_path" value="{{ cam.source_path }}">
+              <input type="hidden" name="cctv_name" value="{{ cam.cctv_name }}">
+              <button class="ug-btn" type="submit">저장</button>
+            </form>
+          </details>
+
+          <form method="post" action="/settings/cameras/{{ cam.id }}/delete"
+                style="margin:0" onsubmit="return confirm('{{ cam.name }} 을 삭제합니다.\nROI 설정도 함께 지워집니다. 계속하시겠습니까?')">
+            <button class="ug-btn ug-btn--ghost" type="submit"
+                    style="padding:4px 10px;font-size:.76rem">삭제</button></form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 4 + domain_order|length }}" class="ug-empty">
+        {% if sel_sido %}{{ sel_label }}에 등록된 CCTV가 없습니다.
+        <a href="/settings/cameras" style="color:var(--accent)">전체 보기</a>
+        {% else %}등록된 CCTV가 없습니다.{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="ug-note">
+    ROI 열의 <span class="ug-badge ug-badge--crit">빨강</span> 은 해당 탐지서비스의
+    ROI가 아직 설정되지 않았다는 뜻입니다. 설정하지 않으면 <b>화면 전체</b>를
+    기준으로 판정하므로 정확도가 떨어집니다 — 2026-08-22부터 침수·교통위험·노면
+    모두 저장한 ROI를 실제 판정에 씁니다(그전에는 저장만 되고 쓰이지 않았습니다).
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 시/도를 고르면 구·군 목록을 바꾼다. 목록은 서버가 내려준 것을 그대로 쓴다 —
+// 화면과 서버가 다른 목록을 보면 저장할 때만 거부되어 이유를 알기 어렵다.
+var SIGUNGU = {{ sigungu_map | tojson }};
+
+function fillSigungu(sidoSel) {
+  var target = document.getElementById(sidoSel.dataset.sigungu);
+  if (!target) { return; }
+  var want = target.dataset.current || target.value || '';
+  var list = SIGUNGU[sidoSel.value] || [];
+  target.innerHTML = '';
+  var head = document.createElement('option');
+  head.value = '';
+  head.textContent = sidoSel.value ? '— 미지정 —' : '— 시/도를 먼저 고르세요 —';
+  target.appendChild(head);
+  list.forEach(function (name) {
+    var o = document.createElement('option');
+    o.value = o.textContent = name;
+    // 시/도를 바꾸면 이전 구·군은 유효하지 않다. 같은 이름일 때만 살린다.
+    if (name === want) { o.selected = true; }
+    target.appendChild(o);
+  });
+}
+
+document.querySelectorAll('select[data-sigungu]').forEach(function (sel) {
+  fillSigungu(sel);                       // 화면을 열 때 한 번 채운다
+  sel.addEventListener('change', function () {
+    var t = document.getElementById(sel.dataset.sigungu);
+    if (t) { t.dataset.current = ''; }    // 시/도가 바뀌면 이전 선택은 버린다
+    fillSigungu(sel);
+  });
+});
+
+// 미리보기 표의 전체 선택. 오류 행에는 체크박스가 없으므로 그냥 지나간다.
+function togglePick(master) {
+  document.querySelectorAll('input.pick').forEach(function (el) {
+    el.checked = master.checked;
+  });
+}
+</script>
+{% endblock %}

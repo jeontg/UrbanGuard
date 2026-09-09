@@ -55,7 +55,7 @@ def _render(*, risk_name: str, level: str, severity: int, score: float,
 
 ---
 *본 보고서는 tot_dashboard 파이프라인이 자동 생성했습니다. 수치·시각·위치·위험등급·근거·권고는
-규칙(RISK_CATALOG) 기반 **고정 필드**이며, 「종합 판단」 서술만 {narr_src}로 작성됩니다
+규칙(TRAFFIC_RISK_CATALOG) 기반 **고정 필드**이며, 「종합 판단」 서술만 {narr_src}로 작성됩니다
 (서술은 고정 필드를 변경하지 않음). ※ 교통신호 직접 제어는 수행하지 않으며 권고·통보까지만 제공합니다.*
 """
 

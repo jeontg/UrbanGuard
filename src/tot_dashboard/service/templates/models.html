@@ -1,0 +1,393 @@
+{% extends "_layout.html" %}
+{% block title %}AI 모델 운영 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>AI 모델 운영 <span style="font-size:.8rem;color:var(--muted);
+      font-weight:400">S-61</span></h2>
+  <p>모델별 탐지·오탐 현황과 재학습 데이터 확보 상황입니다.
+    아래 <b>모델 시험 탐지</b>에서 모델을 골라 실제 지점에 대 볼 수 있습니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+{# ── 운영 모델 지정 ──────────────────────────────────────────────
+   시험대가 「대 봤다」라면 여기는 「이걸로 간다」이다. 도메인마다 모델을
+   붙드는 방식이 달라 반영 시점이 다르므로, 그 차이를 그대로 적는다.
+   「저장했습니다」로만 끝내면 바뀐 줄 알고 관제하게 된다. #}
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>운영 모델 지정</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:0 0 14px">
+    <b>상시 탐지가 실제로 쓸 모델</b>입니다. 아래 시험대에서 더 나은 모델을
+    찾았다면 여기서 지정하십시오.</p>
+  <div class="ug-cards" style="--ug-gap:14px">
+    {% for b in bench %}
+    <div class="ug-card" style="background:var(--bg);margin:0">
+      <h4 style="margin:0 0 10px;font-size:.95rem">{{ b.label }}</h4>
+      {% if b.models %}
+      <form method="post" action="/models/select">
+        <input type="hidden" name="domain" value="{{ b.domain }}">
+        <select name="model_key" style="width:100%;padding:9px 11px;
+                background:var(--panel);color:var(--text);
+                border:1px solid var(--border);border-radius:8px;font-size:.84rem">
+          {% for m in b.models %}
+          <option value="{{ m.key }}"
+                  {% if m.key == b.default_key %}selected{% endif %}>
+            {{ m.label }}{% if m.guessed %} · 확인 필요{% endif %}
+            ({{ m.size_mb }}MB)</option>
+          {% endfor %}
+        </select>
+        <button class="ug-btn" type="submit"
+                style="width:100%;margin-top:10px">이 모델로 운영</button>
+      </form>
+      {# ⚠️ apply_note 는 라우트가 이미 만들어 넘기고 있었는데(routes_analytics.py)
+         이 화면 어디서도 안 쓰고 있었다(2026-08-22 전수점검) — 그래서
+         인파의 "계수는 안 바뀐다" 같은 중요한 단서가 화면에 한 줄도 안 뜨고
+         저장 직후 notice 에만 잠깐 스쳤다. live_apply 이분법 대신 실제
+         문구를 그대로 보여준다. #}
+      <p style="margin:8px 0 0;font-size:.76rem;
+         color:{{ '#8ee89f' if b.live_apply else '#e8c35c' }}">
+        {{ b.apply_note or ("저장 즉시 반영됩니다." if b.live_apply
+                            else "⚠ 저장해도 재기동해야 실제로 바뀝니다.") }}</p>
+
+      {# 사람의 판단은 계산할 수 없다. 적을 자리를 따로 둔다. #}
+      <form method="post" action="/models/note" style="margin-top:12px">
+        <input type="hidden" name="domain" value="{{ b.domain }}">
+        <label for="n-{{ b.domain }}" style="display:block;font-size:.78rem;
+               color:var(--muted);margin-bottom:4px">비고 (운영자 판단)</label>
+        <textarea id="n-{{ b.domain }}" name="note" rows="3"
+                  style="width:100%;padding:8px 10px;background:var(--panel);
+                         color:var(--text);border:1px solid var(--border);
+                         border-radius:8px;font:inherit;font-size:.8rem"
+          >{{ b.note }}</textarea>
+        <button class="ug-btn ug-btn--ghost" type="submit"
+                style="width:auto;padding:6px 14px;font-size:.78rem;margin-top:6px"
+          >비고 저장</button>
+      </form>
+      {% else %}
+      <p class="ug-empty" style="padding:12px 0">쓸 수 있는 모델 파일이 없습니다.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── 모델 시험 탐지 ──────────────────────────────────────────────
+   왜 이 화면에 있나
+     노면 모델은 4번 학습해 후보가 여럿인데, 둘을 같은 CCTV에 대 보려면
+     코드를 고쳐 재기동하는 수밖에 없었다. 그래서 「이 모델이 저 모델보다
+     나은가」를 학습 로그의 mAP 숫자로만 판단해 왔고, 그 숫자가 부산 CCTV
+     성능과 다르다는 것이 이미 드러났다.
+
+   운영과 분리
+     여기 결과는 이벤트·노면 현황에 남지 않고, 상시 탐지 모델도 바뀌지
+     않는다. 화면에도 그렇게 적어 둔다 — 안 적으면 바뀐 줄 안다. #}
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>모델 시험 탐지</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:0 0 14px">
+    모델과 지점을 골라 <b>지금 화면을 몇 초 관측해</b> 결과를 봅니다.
+    같은 지점에 모델을 바꿔 가며 대 보면 어느 쪽이 나은지 눈으로 비교할 수 있습니다.
+  </p>
+  <p class="ug-error" style="background:rgba(212,160,23,.14);
+     border-color:rgba(212,160,23,.4);color:#e8c35c;margin-bottom:16px">
+    ⚠ <b>이 카드는 시험일 뿐입니다.</b> 결과는 이벤트·노면 현황에 기록되지 않으며,
+    여기서 고른 모델이 <b>상시 탐지에 반영되지도 않습니다.</b>
+    상시 탐지에 쓸 모델을 바꾸려면 위쪽 「운영 모델 지정」 카드를 쓰십시오.
+  </p>
+
+  <div class="ug-cards" style="--ug-gap:14px">
+    {% for b in bench %}
+    <form method="post" action="/models/probe" class="ug-card"
+          style="background:var(--bg);margin:0">
+      <h4 style="margin:0 0 10px;font-size:.95rem">{{ b.label }}</h4>
+      <input type="hidden" name="domain" value="{{ b.domain }}">
+
+      {% if not b.models %}
+      <p class="ug-empty" style="padding:12px 0">쓸 수 있는 모델 파일이 없습니다.</p>
+      {% elif not b.targets %}
+      <p class="ug-empty" style="padding:12px 0">
+        대 볼 지점이 없습니다.<br>
+        <a href="/settings/cameras" style="color:var(--accent);text-decoration:none"
+          >CCTV 관리(S-80)</a>에서 이 도메인 사용으로 지정하십시오.</p>
+      {% else %}
+      <div class="ug-field" style="margin-bottom:10px">
+        <label for="m-{{ b.domain }}">모델</label>
+        <select id="m-{{ b.domain }}" name="model_key" style="width:100%;
+                padding:9px 11px;background:var(--panel);color:var(--text);
+                border:1px solid var(--border);border-radius:8px;font-size:.84rem">
+          {% for m in b.models %}
+          <option value="{{ m.key }}"
+                  {% if m.key == b.default_key %}selected{% endif %}>
+            {{ m.label }}{% if m.in_use %} · 운영중{% endif %}{% if m.guessed %} · 확인 필요{% endif %}
+            ({{ m.size_mb }}MB)</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="ug-field" style="margin-bottom:10px">
+        <label for="t-{{ b.domain }}">대상 지점</label>
+        <select id="t-{{ b.domain }}" name="target" class="probe-target"
+                style="width:100%;padding:9px 11px;background:var(--panel);
+                color:var(--text);border:1px solid var(--border);
+                border-radius:8px;font-size:.84rem">
+          {% for t in b.targets %}
+          <option value="{{ t.id }}" data-kind="{{ t.kind }}">
+            {{ t.name }} · {{ t.note }}</option>
+          {% endfor %}
+        </select>
+        {# 대상이 실시간 스트림인지 파일인지에 따라 여는 방식이 다르다.
+           고른 항목의 종류를 함께 보낸다(아래 스크립트가 채운다). #}
+        <input type="hidden" name="kind" value="{{ b.targets[0].kind }}">
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <div class="ug-field" style="margin:0;flex:1 1 90px">
+          <label for="d-{{ b.domain }}">관측(초)</label>
+          <input id="d-{{ b.domain }}" name="duration_sec" type="number"
+                 value="8" min="1" max="30" step="1">
+        </div>
+        <div class="ug-field" style="margin:0;flex:1 1 90px">
+          <label for="c-{{ b.domain }}">임계값</label>
+          <input id="c-{{ b.domain }}" name="conf" type="number"
+                 value="0.25" min="0.01" max="0.95" step="0.01">
+        </div>
+      </div>
+
+      <button class="ug-btn" type="submit" style="width:100%;margin-top:12px"
+              {% if busy %}disabled{% endif %}>
+        {% if busy %}다른 시험이 진행 중{% else %}시험 탐지 실행{% endif %}</button>
+      <p style="margin:8px 0 0;font-size:.76rem;color:var(--muted)">
+        관측 시간만큼 응답이 늦습니다. 한 번에 하나만 돕니다.</p>
+      {% endif %}
+    </form>
+    {% endfor %}
+  </div>
+
+  {% if probe %}
+  {# 실행 결과. 「몇 건 나왔다」만 보여 주면 그 건수가 맞는지 알 수 없어서,
+     프레임 수·소요 시간과 함께 실제 화면을 붙인다. #}
+  <div class="ug-card" style="margin-top:16px;border-color:var(--accent)">
+    <h4 style="margin:0 0 4px">시험 결과 — {{ probe.target_name }}</h4>
+    <p style="margin:0 0 12px;font-size:.82rem;color:var(--muted)">
+      {{ probe.model_label }}<br>
+      <code style="font-size:.76rem">{{ probe.model_key }}</code>
+      · {{ probe.backend_label if probe.backend_label else probe.backend }}
+      · 관측 프레임 {{ probe.frames_analyzed }}장
+      · {{ probe.elapsed_sec }}초</p>
+
+    {% if probe.ok %}
+    <div class="ug-cards" style="--ug-gap:10px;margin-bottom:12px">
+      {% for k, v in probe.metrics.items() %}
+      <div class="ug-card" style="background:var(--bg);margin:0">
+        <p class="ug-stat" style="font-size:1.4rem">{{ v }}</p>
+        <p class="ug-stat-label">{{ k }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="ug-error">{{ probe.note or "관측하지 못했습니다." }}</p>
+    {% endif %}
+
+    {% if probe.preview %}
+    <img src="/models/preview/{{ probe.preview }}" alt="시험 탐지 결과 화면"
+         style="max-width:100%;border-radius:10px;border:1px solid var(--border)">
+    <p style="margin:6px 0 0;font-size:.76rem;color:var(--muted)">
+      탐지 결과가 가장 많았던 프레임입니다. <b>사람은 저장 전에 가려집니다.</b></p>
+    {% elif probe.preview_note %}
+    <p class="ug-note">{{ probe.preview_note }}</p>
+    {% endif %}
+
+    {% if probe.ok and probe.note %}
+    <p class="ug-note">{{ probe.note }}</p>
+    {% endif %}
+    <p class="ug-note">이 결과는 <b>어디에도 기록되지 않습니다.</b>
+      화면을 벗어나면 사라집니다.</p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>모델 {{ rows|length }}종</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>모델</th><th>버전</th><th>상태</th><th>탐지</th>
+        <th>오탐 신고</th><th>오탐률</th><th>비고</th>
+      </tr></thead>
+      <tbody>
+      {% for m in rows %}
+      <tr>
+        <td>{{ m.name }}</td>
+        {# 「버전」은 손으로 적은 숫자가 아니라 실제 파일이다. 모델을 바꾸면
+           이 칸도 따라 바뀐다 — 예전에는 코드에 박혀 있어 바뀌지 않았다. #}
+        <td style="font-size:.82rem;white-space:normal;max-width:280px">
+          {{ m.version }}
+          {% if m.model_key %}
+          <br><code style="font-size:.72rem;color:var(--muted);word-break:break-all"
+            >{{ m.model_key }}</code>
+          {% endif %}
+          {% if m.modified %}
+          <br><span style="font-size:.72rem;color:var(--muted)"
+            >학습 {{ m.modified }}</span>
+          {% endif %}
+        </td>
+        <td><span class="ug-badge ug-badge--{{ m.state_badge }}">{{ m.state }}</span></td>
+        <td>{{ m.detected }}</td>
+        <td>{{ m.false_positive }}</td>
+        <td>{% if m.fp_rate is not none %}{{ m.fp_rate }}%{% else %}—{% endif %}</td>
+        <td style="white-space:normal;font-size:.8rem;color:var(--muted);
+                   max-width:260px">{{ m.note or "—" }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="ug-note">
+    ⚠ 오탐률은 관제요원이 <b>신고한 건수 기준</b>입니다. 신고가 적으면 오탐이
+    적은 것이 아니라 <b>아직 모르는 것</b>일 수 있습니다.<br>
+    상태는 <b>파일 존재 여부와 실제 탐지 실적에서 계산</b>합니다 —
+    「탐지 실적 없음」은 모델이 돌기는 하는데 아직 한 건도 못 잡았다는 뜻이며,
+    평온해서 잡을 것이 없는 경우와 구분되지 않습니다. 비고는 운영자가 적은
+    <b>판단</b>이며 계산값이 아닙니다.
+  </p>
+</div>
+
+{# 노면 모델이 실무 기준과 어디서 어긋나는지. 「탐지가 된다」와 「기관 기준으로
+   판정할 수 있다」는 다른 말이라, 그 차이를 화면이 숨기면 과대 약속이 된다. #}
+<section class="ug-card" style="margin-bottom:16px;border-color:#d4a017">
+  <h3>노면 모델 — 기관 기준과의 간극</h3>
+
+  <div class="ug-cards" style="--ug-gap:14px;
+       grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+    <div>
+      <p class="ug-stat-label" style="margin:0 0 6px">서울시 보수공법 결정 기준</p>
+      <table class="ug-table" style="font-size:.78rem">
+        <tbody>
+          <tr><td>균열률 <b>CR</b></td><td>면적 % — 8 / 15 / 20 구간</td></tr>
+          <tr><td>소성변형 <b>RD</b></td><td>mm — 8 / 15 / 20 구간</td></tr>
+          <tr><td>평탄성 <b>IRI</b></td><td>전용도로 6 · 그 외 8 m/km</td></tr>
+        </tbody>
+      </table>
+      <p class="ug-note" style="margin-top:6px">
+        출처: 서울특별시 도로포장 유지관리 매뉴얼(2018) 「서울형 Decision Tree」
+      </p>
+    </div>
+
+    <div>
+      <p class="ug-stat-label" style="margin:0 0 6px">우리가 지금 내는 값</p>
+      <table class="ug-table" style="font-size:.78rem">
+        <tbody>
+          <tr><td>균열·포트홀</td>
+              <td><b style="color:#e8c35c">개수</b> (건/100m)</td></tr>
+          <tr><td>소성변형</td>
+              <td style="color:var(--muted)">측정 불가 — CCTV 각도로는 안 됨</td></tr>
+          <tr><td>평탄성</td>
+              <td style="color:var(--muted)">측정 불가 — 로드스캐너 필요</td></tr>
+        </tbody>
+      </table>
+      <p class="ug-note" style="margin-top:6px">
+        <b>개수로는 CR(면적 %) 표에 값을 넣을 수 없습니다.</b>
+        분할(segmentation) 모델로 바꾸면 면적비가 나옵니다 —
+        침수 도메인이 이미 같은 방식입니다.
+      </p>
+    </div>
+
+    <div>
+      <p class="ug-stat-label" style="margin:0 0 6px">구간 길이 보정</p>
+      <p class="ug-stat" style="color:{% if road_gap.calibrated %}var(--accent){% else %}#e8843b{% endif %}">
+        {{ road_gap.calibrated }}<span style="font-size:.9rem;font-weight:600">
+        / {{ road_gap.cameras }}개소</span></p>
+      {% if road_gap.uncalibrated %}
+      <p class="ug-note">
+        <b>{{ road_gap.uncalibrated }}개소가 미보정</b>입니다. 구간 길이가 없으면
+        건/100m 로 바꿀 수 없어 지점끼리 비교되지 않습니다.<br>
+        <a href="/settings/cameras?region=" style="color:var(--accent)">
+          CCTV 관리에서 입력 →</a>
+      </p>
+      {% else %}
+      <p class="ug-note">전 지점 보정 완료. 건/100m 로 비교됩니다.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="ug-error" role="note" style="margin-top:14px">
+    ⚠ <b>제안서 문구 주의</b> — 「노면 손상을 탐지한다」는 사실이지만,
+    「기관 포장관리 기준으로 판정한다」는 지금 성립하지 않습니다.
+    CR 축만 채울 수 있고 RD·IRI 는 장비가 있어야 합니다.
+  </p>
+</section>
+
+<div class="ug-cards" style="grid-template-columns:minmax(0,1fr) minmax(0,1.4fr)">
+  <section class="ug-card">
+    <h3>재학습 데이터 확보</h3>
+    <p class="ug-stat" style="color:var(--accent)">{{ training.usable }}<span
+       style="font-size:.9rem;font-weight:600">장</span></p>
+    <p class="ug-stat-label">학습에 쓸 수 있다고 판정된 사진</p>
+    <hr style="border:0;border-top:1px solid var(--border);margin:14px 0">
+    <p style="margin:0;font-size:.9rem">전체 제보 {{ training.total }}건 중</p>
+    <p class="ug-note">
+      노면 모델은 공개 데이터셋(SVRDD·RDD2022)으로 학습을 마쳤습니다.
+      남은 문제는 <b>국내 CCTV 환경과의 차이</b>입니다 — 아래 카드를
+      보십시오. 현장 제보는 그 차이를 메우는 국내 표본입니다.
+    </p>
+    <p style="margin:10px 0 0"><a href="/reports" style="color:var(--accent);
+       text-decoration:none;font-weight:700">현장 제보 화면 →</a></p>
+  </section>
+
+  <section class="ug-card">
+    <h3>오탐 신고 {{ fp_events|length }}건</h3>
+    {% if fp_events %}
+    <div class="ug-tablewrap">
+      <table class="ug-table">
+        <thead><tr><th>지점</th><th>도메인</th><th>등급</th><th>신고 시각</th><th></th></tr></thead>
+        <tbody>
+        {% for e in fp_events %}
+        <tr>
+          <td>{{ e.place_name or e.block_id }}</td>
+          <td>{{ e.domain }}</td>
+          <td>{{ e.peak_level or e.level }}</td>
+          <td>{{ e.closed_at.strftime("%m-%d %H:%M") if e.closed_at else "—" }}</td>
+          <td><a href="/events/{{ e.id }}" style="color:var(--accent);
+                 text-decoration:none">보기 →</a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="ug-note">오탐으로 신고된 건은 재학습 시 <b>음성 표본</b>으로 씁니다.</p>
+    {% else %}
+    <p class="ug-empty">오탐 신고가 없습니다.<br>
+      이벤트 상세 화면의 「오탐 신고」로 등록됩니다.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 고른 대상이 실시간 스트림인지 동영상 파일인지를 함께 보낸다. 서버가 여는
+// 방식이 달라, 이 값이 틀리면 「스트림이 없다」로 끝난다.
+(function () {
+  document.querySelectorAll('select.probe-target').forEach(function (sel) {
+    var hidden = sel.form ? sel.form.querySelector('input[name="kind"]') : null;
+    if (!hidden) { return; }
+    function sync() {
+      var opt = sel.options[sel.selectedIndex];
+      hidden.value = (opt && opt.dataset.kind) || 'cctv';
+    }
+    sel.addEventListener('change', sync);
+    sync();
+  });
+
+  // 실행은 몇 초 걸린다. 누른 뒤 아무 반응이 없으면 다시 누르게 되고,
+  // 그러면 서버가 409(다른 시험 진행 중)로 되돌려 준다.
+  document.querySelectorAll('form[action="/models/probe"]').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      var btn = f.querySelector('button[type="submit"]');
+      if (btn) { btn.disabled = true; btn.textContent = '관측 중…'; }
+    });
+  });
+})();
+</script>
+{% endblock %}

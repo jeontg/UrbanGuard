@@ -1,0 +1,320 @@
+{# S-92 오류 관리 — 발생 이력.
+
+   화면 설계 의도
+   * 같은 오류는 한 줄로 묶고 「몇 번, 언제부터」를 보여 준다. 발생마다 한 줄이면
+     CCTV 재접속 실패 수만 건에 정작 중요한 오류가 묻힌다.
+   * 오류 코드 사전의 **원인·해결방법을 목록 안에서 바로** 펼쳐 본다. 다른 화면으로
+     옮겨 다니게 하면 아무도 안 읽는다.
+   * 삭제는 되돌릴 수 없으므로 확인을 한 번 받고, 감사 로그에 남는다는 사실을
+     화면에 적어 둔다.
+
+   폼 구조 주의
+     표 전체가 삭제용 폼 하나(#bulk)다. 그 안에 조치용 폼을 겹쳐 넣을 수 없어서,
+     조치 폼은 문서 끝에 두고 버튼에 form="rsv-<id>" 로 연결한다(HTML5). #}
+{% extends "_layout.html" %}
+{% block title %}오류 관리 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>오류 관리</h2>
+  <p>서비스에서 발생한 오류입니다. 같은 오류는 한 줄로 묶여 발생 횟수로 표시됩니다.
+    코드를 펼치면 원인과 해결방법이 나옵니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+<!-- 요약 — 「지금 무엇부터 봐야 하는가」 -->
+<div class="ug-cards" style="--ug-gap:12px;margin-bottom:16px">
+  <div class="ug-card">
+    <p class="ug-stat" style="color:{{ '#ff9a9c' if summary.critical else 'var(--text)' }}">
+      {{ summary.critical }}</p>
+    <p class="ug-stat-label">미처리 <b>심각</b> ({{ summary.days }}일)</p>
+  </div>
+  <div class="ug-card">
+    <p class="ug-stat">{{ summary.unresolved }}</p>
+    <p class="ug-stat-label">미처리 오류 ({{ summary.days }}일)</p>
+  </div>
+  <div class="ug-card">
+    <p class="ug-stat">{{ summary.occurrences }}</p>
+    <p class="ug-stat-label">총 발생 횟수 ({{ summary.days }}일)</p>
+  </div>
+  <div class="ug-card">
+    <p class="ug-stat-label" style="margin:0 0 6px">가장 많이 난 오류</p>
+    {% for t in summary.top %}
+    <p style="margin:2px 0;font-size:.86rem">
+      <a href="/admin/errors?code={{ t.code }}"
+         style="color:var(--text)">{{ t.code }}</a>
+      <span style="color:var(--muted)"> · {{ t.count }}회</span></p>
+    {% else %}
+    <p style="margin:2px 0;font-size:.86rem;color:var(--muted)">발생한 오류가 없습니다.</p>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- 검색 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>오류 검색</h3>
+  <form method="get" action="/admin/errors"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:200px;flex:2 1 220px">
+      <label for="f-q">검색어</label>
+      <input id="f-q" name="q" value="{{ filt.q }}"
+             placeholder="메시지·경로·코드 일부">
+    </div>
+    <div class="ug-field" style="margin:0;min-width:140px;flex:1 1 140px">
+      <label for="f-cat">분류</label>
+      <select id="f-cat" name="category" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in categories.items() %}
+        <option value="{{ v }}" {% if filt.category == v %}selected{% endif %}>
+          {{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:120px;flex:1 1 120px">
+      <label for="f-sev">심각도</label>
+      <select id="f-sev" name="severity" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in severities.items() %}
+        <option value="{{ v }}" {% if filt.severity == v %}selected{% endif %}>
+          {{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:130px;flex:1 1 130px">
+      <label for="f-src">발생 위치</label>
+      <select id="f-src" name="source" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in sources.items() %}
+        <option value="{{ v }}" {% if filt.source == v %}selected{% endif %}>
+          {{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:120px;flex:1 1 120px">
+      <label for="f-res">처리 여부</label>
+      <select id="f-res" name="resolved" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        <option value="0" {% if filt.resolved == "0" %}selected{% endif %}>미처리</option>
+        <option value="1" {% if filt.resolved == "1" %}selected{% endif %}>처리완료</option>
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:110px;flex:1 1 110px">
+      <label for="f-days">기간</label>
+      <select id="f-days" name="days" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="" {% if not filt.days %}selected{% endif %}>전체</option>
+        <option value="1" {% if filt.days == "1" %}selected{% endif %}>최근 1일</option>
+        <option value="7" {% if filt.days == "7" %}selected{% endif %}>최근 7일</option>
+        <option value="30" {% if filt.days == "30" %}selected{% endif %}>최근 30일</option>
+      </select>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+    <a class="ug-btn ug-btn--ghost" href="/admin/errors"
+       style="width:auto;padding:11px 18px;text-decoration:none;text-align:center">
+      조건 해제</a>
+  </form>
+</div>
+
+<!-- 목록 -->
+<form id="bulk" method="post" action="/admin/errors/delete?{{ qs }}"
+      onsubmit="return confirm('선택한 오류 이력을 완전히 삭제합니다. 되돌릴 수 없습니다. 진행할까요?')">
+<div class="ug-card">
+  <h3 style="display:flex;flex-wrap:wrap;gap:10px;align-items:baseline">
+    <span>발생 이력 ({{ rows|length }}건{% if rows|length >= limit %},
+      최대 {{ limit }}건까지 표시{% endif %})</span>
+    <span style="font-size:.78rem;color:var(--muted);font-weight:400">
+      — 삭제는 되돌릴 수 없으며, 삭제한 사실은 감사 로그(S-91)에 남습니다.</span>
+  </h3>
+
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th style="width:34px"><input type="checkbox" id="chk-all"
+            aria-label="전체 선택"></th>
+        <th>최근 발생</th><th>코드</th><th>심각도</th><th>오류 / 메시지</th>
+        <th>위치</th><th style="text-align:right">횟수</th><th>상태</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      {% set c = codes.get(r.code) %}
+      <tr>
+        <td><input type="checkbox" name="log_ids" value="{{ r.id }}"
+                   aria-label="{{ r.code }} 선택"></td>
+        <td style="white-space:nowrap">
+          {{ r.last_seen_at.strftime("%m-%d %H:%M:%S") }}
+          {% if r.count > 1 %}
+          <br><span style="font-size:.74rem;color:var(--muted)">
+            처음 {{ r.first_seen_at.strftime("%m-%d %H:%M") }}</span>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap"><code>{{ r.code }}</code></td>
+        <td>
+          {% if r.severity == "critical" %}
+            <span class="ug-badge ug-badge--crit">심각</span>
+          {% elif r.severity == "error" %}
+            <span class="ug-badge ug-badge--warn">오류</span>
+          {% elif r.severity == "warn" %}
+            <span class="ug-badge ug-badge--off">주의</span>
+          {% else %}
+            <span class="ug-badge ug-badge--off">정보</span>
+          {% endif %}
+        </td>
+        <td style="white-space:normal;max-width:520px">
+          <details>
+            <summary style="cursor:pointer">
+              <b>{{ c.title if c else "사전에 없는 코드" }}</b>
+              <span style="display:block;color:var(--muted);font-size:.82rem;
+                           margin-top:2px">{{ r.message | truncate(140) }}</span>
+            </summary>
+            <div style="margin:10px 0 4px;font-size:.86rem;line-height:1.55">
+              {% if c %}
+              <p style="margin:0 0 4px"><b>원인</b></p>
+              <p style="margin:0 0 10px;color:var(--muted);white-space:pre-wrap"
+                >{{ c.cause }}</p>
+              <p style="margin:0 0 4px"><b>해결방법</b></p>
+              <p style="margin:0 0 10px;color:var(--muted);white-space:pre-wrap"
+                >{{ c.resolution }}</p>
+              {% else %}
+              <p class="ug-error" style="margin:0 0 10px">이 코드는 오류 코드 사전에
+                없습니다. <a href="/admin/error-codes" style="color:inherit">사전
+                (S-93)</a>에 등록하면 다음부터 원인과 해결방법이 여기 표시됩니다.</p>
+              {% endif %}
+
+              <p style="margin:0 0 4px"><b>전체 메시지</b></p>
+              <pre style="margin:0 0 10px;white-space:pre-wrap;word-break:break-all;
+                          font-size:.78rem;color:var(--muted)">{{ r.message }}</pre>
+              {% if r.detail %}
+              <p style="margin:0 0 4px"><b>상세 (개발 부서 전달용)</b></p>
+              <pre style="margin:0 0 10px;white-space:pre-wrap;word-break:break-all;
+                          font-size:.74rem;color:var(--muted);max-height:260px;
+                          overflow:auto">{{ r.detail }}</pre>
+              {% endif %}
+
+              {% if r.resolved %}
+              <p style="margin:0 0 4px"><b>조치 기록</b></p>
+              <p style="margin:0 0 10px;color:var(--muted)">
+                {{ r.resolved_at.strftime("%Y-%m-%d %H:%M") if r.resolved_at }}
+                · {{ r.resolved_by or "—" }}<br>
+                {{ r.resolve_note or "(메모 없음)" }}</p>
+              <button class="ug-btn ug-btn--ghost" type="submit"
+                      form="rsv-{{ r.id }}" name="undo" value="1"
+                      style="width:auto;padding:8px 16px">처리완료 해제</button>
+              {% else %}
+              <p style="margin:0 0 4px"><b>이번 건의 조치 내용</b></p>
+              <textarea form="rsv-{{ r.id }}" name="note" rows="2"
+                        placeholder="무엇을 해서 해결했는지 적어 두면 다음 사람이 봅니다."
+                        style="width:100%;padding:9px 11px;background:var(--bg);
+                               color:var(--text);border:1px solid var(--border);
+                               border-radius:8px;font:inherit;font-size:.84rem"></textarea>
+              <button class="ug-btn" type="submit" form="rsv-{{ r.id }}"
+                      style="width:auto;padding:8px 18px;margin-top:8px"
+                >처리완료로 표시</button>
+              {% endif %}
+            </div>
+          </details>
+        </td>
+        <td style="white-space:normal;max-width:200px;font-size:.8rem;color:var(--muted)">
+          {{ sources.get(r.source, r.source) }}
+          {% if r.path %}<br><span style="word-break:break-all">{{ r.path }}</span>{% endif %}
+          {% if r.login_id %}<br>{{ r.login_id }}{% endif %}
+        </td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums">
+          {{ r.count }}</td>
+        <td>
+          {% if r.resolved %}
+            <span class="ug-badge ug-badge--on">처리완료</span>
+          {% else %}
+            <span class="ug-badge ug-badge--off">미처리</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="ug-empty">
+        {% if filt.q or filt.code or filt.category or filt.severity
+              or filt.source or filt.resolved or filt.days %}
+          조건에 맞는 오류가 없습니다.
+        {% else %}
+          기록된 오류가 없습니다.
+        {% endif %}
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if rows %}
+  <button class="ug-btn" type="submit"
+          style="width:auto;padding:10px 20px;margin-top:14px;
+                 background:rgba(229,72,77,.16);border-color:rgba(229,72,77,.5)"
+    >선택 항목 삭제</button>
+  {% endif %}
+</div>
+</form>
+
+<!-- 일괄 정리 -->
+<div class="ug-card" style="margin-top:16px">
+  <h3>오래된 이력 정리</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:0 0 12px">
+    기본값은 <b>처리완료 건 중</b> 지정 일수보다 오래된 것만 지웁니다.
+    아직 조치하지 않은 오류까지 한 번에 날아가지 않도록 한 안전장치입니다.</p>
+  <form method="post" action="/admin/errors/cleanup?{{ qs }}"
+        onsubmit="return confirm('조건에 맞는 오류 이력을 완전히 삭제합니다. 되돌릴 수 없습니다. 진행할까요?')"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:150px;flex:0 1 180px">
+      <label for="cl-days">이전 기록 (일)</label>
+      <input id="cl-days" name="before_days" type="number" value="30" min="1" max="3650">
+    </div>
+    <div class="ug-field" style="margin:0;min-width:200px;flex:1 1 220px">
+      <label for="cl-scope">대상</label>
+      <select id="cl-scope" name="resolved_only" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="1">처리완료 건만 (권장)</option>
+        <option value="0">처리 여부와 무관하게 전부</option>
+      </select>
+    </div>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:11px 22px;background:rgba(229,72,77,.16);
+                   border-color:rgba(229,72,77,.5)">정리 실행</button>
+  </form>
+</div>
+
+{# 조치용 폼. 표 안의 삭제 폼과 겹칠 수 없어 문서 끝에 두고 form 속성으로 잇는다. #}
+{% for r in rows %}
+<form id="rsv-{{ r.id }}" method="post" action="/admin/errors/resolve?{{ qs }}"
+      style="display:none">
+  <input type="hidden" name="log_id" value="{{ r.id }}">
+</form>
+{% endfor %}
+
+<p class="ug-note">오류 코드의 원인·해결방법은
+  <a href="/admin/error-codes" style="color:inherit">오류 코드 사전 (S-93)</a>에서
+  고칠 수 있습니다. 현장에서 알아낸 조치 방법을 적어 두면 다음에 같은 오류를 만난
+  사람이 이 화면에서 바로 봅니다.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 전체 선택 — 삭제 대상이 많을 때 하나씩 누르게 하면 실수가 는다.
+(function () {
+  var all = document.getElementById('chk-all');
+  if (!all) { return; }
+  all.addEventListener('change', function () {
+    document.querySelectorAll('#bulk input[name="log_ids"]').forEach(function (c) {
+      c.checked = all.checked;
+    });
+  });
+})();
+</script>
+{% endblock %}

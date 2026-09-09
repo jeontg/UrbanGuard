@@ -27,15 +27,31 @@ dependencies = [
     "opencv-python>=4.10",
     "ultralytics>=8.3",
     "supervision>=0.20",
+    # 추적기. supervision.ByteTrack 이 0.28.0 에서 폐기되고 0.31.0 에서
+    # 제거되며, 후속이 이 패키지의 ByteTrackTracker 다. 어댑터
+    # (common/tracking.py)가 둘 중 있는 것을 고르므로 없어도 뜨지만,
+    # **없으면 폐기 예정 구현으로 도는 상태**가 된다.
+    "trackers>=2.6",
     "lapx>=0.5",
     "torch>=2.2",
     "fastapi>=0.116",
     "uvicorn[standard]>=0.35",
     "jinja2>=3.1",
     "python-multipart>=0.0.20",
+    "openpyxl>=3.1",
     "python-dotenv>=1.1",
     "google-genai>=0.3",
+    # 2026-08-26 — 온프레미스(폐쇄망) VLM 백엔드(common/vlm.py,
+    # TOT_VLM_BACKEND=openai_compatible)가 쓴다. vLLM·Ollama 등 OpenAI 호환
+    # 서버를 부르는 용도라 google-genai와 같은 지연 임포트 + 실패 시 우아한
+    # 처리 패턴을 따른다(핵심 의존성이지만 코드는 ImportError를 감싼다).
+    "openai>=1.0",
     "solapi>=5.0",
+    # AI 모델 학습(core/training_jobs.py)이 학습 서브프로세스의 생사를
+    # 재부팅 후에도 확인하는 데 쓴다. torch/ultralytics의 전이 의존성으로
+    # 이미 설치돼 있었으나 직접 의존성으로 명시하지 않으면 향후 그쪽
+    # 의존성이 빠질 때 조용히 사라질 수 있다.
+    "psutil>=6.0",
     "imageio-ffmpeg>=0.6.0",
 ]
 
@@ -71,6 +87,10 @@ tot-service = "tot_dashboard.service.main:run"
 tot-flood-standalone = "tot_dashboard.flood.standalone_pipeline:main"
 tot-traffic-poc = "tot_dashboard.traffic_weather.run_poc:main"
 tot-crowd-pipeline = "tot_dashboard.crowd.sam3_pipeline:main"
+# 계정 관리 — 설치 가이드·운영자 매뉴얼이 이 이름으로 안내한다.
+# urbanguard-bootstrap 은 문서에만 있고 실제로는 등록돼 있지 않았다.
+urbanguard-bootstrap = "tot_dashboard.core.bootstrap:main"
+urbanguard-passwd = "tot_dashboard.core.account_recovery:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

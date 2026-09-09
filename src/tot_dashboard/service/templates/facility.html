@@ -1,0 +1,142 @@
+{% extends "_layout.html" %}
+{% block title %}시설물 원격제어 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>시설물 원격제어</h2>
+  <p>진입차단시설·배수펌프장 등. 모든 제어 시도는 성공·실패 무관하게 기록됩니다.</p>
+</div>
+
+{# ① 현재 모드를 항상 크게 — 자동인지 모르는 상태가 가장 위험하다 #}
+<div class="ug-card" style="margin-bottom:16px;
+     {% if mode == 'auto' %}background:rgba(229,72,77,.10);border-color:#e5484d
+     {% elif mode == 'request' %}background:rgba(212,160,23,.10);border-color:#d4a017
+     {% else %}background:rgba(63,185,80,.08);border-color:#3fb950{% endif %}">
+  <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+    <div>
+      <p class="ug-stat-label" style="margin:0">현재 제어 모드</p>
+      <p style="margin:2px 0 0;font-size:1.5rem;font-weight:800;
+         {% if mode == 'auto' %}color:#ff9a9c{% elif mode == 'request' %}color:#e8c35c
+         {% else %}color:#6fdc8c{% endif %}">{{ mode_labels[mode] }}</p>
+    </div>
+    <div style="flex:1 1 300px;min-width:260px">
+      <p style="margin:0;font-size:.88rem">{{ mode_desc[mode] }}</p>
+      {% if mode == 'advise' %}
+      <p style="margin:4px 0 0;font-size:.82rem;color:#6fdc8c">
+        ⚠ 자동제어 꺼짐 — 실제 조작은 담당자가 합니다.</p>
+      {% elif mode == 'auto' %}
+      <p style="margin:4px 0 0;font-size:.82rem;color:#ff9a9c">
+        ⚠ 자동 제어가 켜져 있습니다. 별도 계약·보험이 전제되어야 합니다.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if can_mode %}
+  <form method="post" action="/facility/mode"
+        style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px;
+               padding-top:14px;border-top:1px solid var(--border)">
+    <span style="font-size:.85rem;color:var(--muted)">모드 변경</span>
+    {% for m, label, desc in modes %}
+    <button class="ug-btn {% if m != mode %}ug-btn--ghost{% endif %}" type="submit"
+            name="mode" value="{{ m }}" title="{{ desc }}"
+            style="width:auto;padding:8px 14px;font-size:.85rem"
+            {% if m == 'auto' %}onclick="return confirm('자동 제어를 켜면 시스템이 직접 시설을 조작합니다.\n별도 계약·보험이 전제되어야 합니다. 계속하시겠습니까?')"{% endif %}>
+      {{ label }}</button>
+    {% endfor %}
+  </form>
+  {% else %}
+  <p class="ug-note" style="margin:12px 0 0">
+    모드 변경은 시스템관리자 전용입니다 — 시스템의 책임 범위를 바꾸는 행위이므로
+    현장 판단으로 켜고 끌 수 없습니다.</p>
+  {% endif %}
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>시설 {{ facilities|length }}개소</h3>
+  {% if not facilities %}
+  <p class="ug-empty">등록된 시설이 없습니다. <code>configs/facilities.json</code> 을 확인하세요.</p>
+  {% endif %}
+
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>시설</th><th>종류</th><th>관리 주체</th><th>연동</th><th>조치</th>
+      </tr></thead>
+      <tbody>
+      {% for f in facilities %}
+      <tr>
+        <td>{{ f.name }}</td>
+        <td>{{ type_labels.get(f.type, f.type) }}</td>
+        <td>{{ f.manager or "—" }}</td>
+        <td>
+          {% if f.link == 'ok' %}<span class="ug-badge ug-badge--on">정상</span>
+          {% elif f.link == 'error' %}<span class="ug-badge ug-badge--crit">연동 오류</span>
+          {% else %}<span class="ug-badge ug-badge--off">미연계</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="/facility/{{ f.id }}/command"
+                style="display:flex;gap:6px;flex-wrap:wrap;margin:0">
+            <button class="ug-btn ug-btn--ghost" type="submit" name="command"
+                    value="status" style="padding:5px 11px;font-size:.78rem">
+              상태 조회</button>
+            {% if can_advise and 'advise' in allowed %}
+            <button class="ug-btn" type="submit" name="command" value="advise"
+                    style="width:auto;padding:5px 11px;font-size:.78rem">
+              차단 권고 발송</button>
+            {% endif %}
+            {% if can_remote and 'remote' in allowed %}
+            <button class="ug-btn ug-btn--ghost" type="submit" name="command"
+                    value="remote" style="padding:5px 11px;font-size:.78rem"
+                    onclick="return confirm('{{ f.name }} 에 원격 제어를 요청합니다. 계속하시겠습니까?')">
+              원격 제어 요청</button>
+            {% endif %}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="ug-note">
+    ⚠ 현재 등록된 시설 정보는 <b>설정 템플릿</b>입니다. 실재 여부·관리 주체·연동
+    규격은 도로관리청과 시설 제조사 확인이 필요하며, 확인 전까지 모든 시설은
+    「미연계」로 표시됩니다.
+  </p>
+</div>
+
+<div class="ug-card">
+  <h3>제어 이력 {{ history|length }}건</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>시각</th><th>시설</th><th>명령</th><th>모드</th>
+        <th>결과</th><th>사용자</th><th>비고</th>
+      </tr></thead>
+      <tbody>
+      {% for h in history %}
+      <tr>
+        <td>{{ h.created_at.strftime("%m-%d %H:%M:%S") }}</td>
+        <td>{{ h.facility_name }}</td>
+        <td>{{ cmd_labels.get(h.command, h.command) }}</td>
+        <td>{{ mode_labels.get(h.mode, h.mode) }}</td>
+        <td>
+          {% if h.result == 'ok' %}<span class="ug-badge ug-badge--on">성공</span>
+          {% elif h.result == 'blocked' %}<span class="ug-badge ug-badge--warn">모드 제한</span>
+          {% else %}<span class="ug-badge ug-badge--off">미연계</span>{% endif %}
+        </td>
+        <td>{{ h.login_id or "—" }}</td>
+        <td style="white-space:normal;font-size:.8rem;color:var(--muted);
+                   max-width:280px">{{ h.detail or "—" }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="ug-empty">제어 이력이 없습니다.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,326 @@
+{% extends "_layout.html" %}
+{% block title %}{{ ev.place_name or ev.block_id }} — 이벤트 #{{ ev.id }}{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <p style="margin:0 0 6px"><a href="/events" style="color:var(--accent);
+     text-decoration:none;font-size:.86rem;font-weight:700">← 이벤트 목록</a></p>
+  <h2>{{ ev.place_name or ev.block_id }}
+    <span class="ug-badge {{ level_badge.get(ev.level,'ug-badge--off') }}"
+          style="font-size:.9rem;vertical-align:middle">{{ ev.level }}</span>
+    <span class="ug-badge {{ status_badge.get(ev.status,'ug-badge--off') }}"
+          style="font-size:.9rem;vertical-align:middle">{{ status_labels.get(ev.status) }}</span>
+  </h2>
+  <p>{{ domain_labels.get(ev.domain, ev.domain) }} ·
+     탐지 {{ ev.detected_at.strftime("%Y-%m-%d %H:%M") }} · 경과 {{ elapsed }}
+     {% if ev.peak_level != ev.level %}· 최고 등급 {{ ev.peak_level }}{% endif %}
+     {% if ev.false_positive %}· <b style="color:#ff9a9c">오탐 신고됨</b>{% endif %}</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+{# 발생 원인 (2026-09-03 신설) — "왜 이 이벤트가 생겼는가"를 근거 표보다
+   먼저, 한 문장으로 먼저 보여준다. 숫자를 다시 조합하지 않아도 되게. #}
+<section class="ug-card" style="margin-bottom:16px">
+  <h3>발생 원인</h3>
+  <p style="margin:0;line-height:1.6">
+    {% if cause.hazard_label %}
+    <span class="ug-badge {{ level_badge.get(ev.level,'ug-badge--off') }}"
+          style="margin-right:6px">{{ cause.hazard_label }}</span>
+    {% endif %}
+    {{ cause.headline }}
+  </p>
+  {% if cause.threshold_rows %}
+  <div class="ug-tablewrap" style="margin-top:12px">
+    <table class="ug-table" style="min-width:0">
+      <thead><tr><th>등급</th><th>기준</th><th>근거</th></tr></thead>
+      <tbody>
+      {% for t in cause.threshold_rows %}
+      <tr {% if cause.matched_threshold and t.id == cause.matched_threshold.id %}
+          style="background:rgba(232,89,12,.10)"{% endif %}>
+        <td>{{ t.label }}
+          {% if cause.matched_threshold and t.id == cause.matched_threshold.id %}
+          <span style="font-size:.75rem;color:var(--muted)">← 이 이벤트</span>
+          {% endif %}</td>
+        <td>{{ t.min_value|round(1) }}{{ t.unit }} 이상</td>
+        <td style="color:var(--muted);font-size:.85rem">{{ t.source_note }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+<div class="ug-cards" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)">
+
+  <section class="ug-card">
+    <h3>근거</h3>
+    <div class="ug-tablewrap">
+      <table class="ug-table" style="min-width:0">
+        <tbody>
+          <tr><th style="width:140px">지점</th><td>{{ ev.place_name or "—" }}
+            ({{ ev.block_id or "—" }})</td></tr>
+          <tr><th>현재 등급</th><td>{{ ev.level }}</td></tr>
+          <tr><th>모델 신뢰도</th>
+            <td>{% if ev.confidence is not none %}{{ "%.2f"|format(ev.confidence) }}
+                {% else %}—{% endif %}</td></tr>
+          {% for k, v in (ev.detail or {}).items() %}
+          <tr><th>{{ k }}</th><td>{{ v }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="ug-note">⚠ 탐지 모델은 부산 실환경 검증 전입니다.
+      잘못된 탐지라면 아래 「오탐 신고」로 알려주세요 — 재학습 데이터가 됩니다.</p>
+  </section>
+
+  <section class="ug-card">
+    <h3>조치</h3>
+    {% if ev.status == "closed" %}
+      <p class="ug-empty" style="padding:8px 0">종결된 이벤트입니다.
+        {% if ev.closed_at %}({{ ev.closed_at.strftime("%m-%d %H:%M") }}){% endif %}</p>
+    {% else %}
+    <form method="post" action="/events/{{ ev.id }}/action">
+      <div class="ug-field">
+        <label for="memo">조치 내용 (선택)</label>
+        <input id="memo" name="memo" placeholder="예: 현장 확인 요청, 도로과 유선 통보">
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        {% if ev.status == "open" %}
+        <button class="ug-btn" type="submit" name="act" value="acknowledge"
+                style="width:auto;padding:9px 16px">확인 (처리중으로)</button>
+        {% endif %}
+        <button class="ug-btn ug-btn--ghost" type="submit" name="act" value="memo">
+          조치 기록</button>
+        {% if can_notify_dept %}
+        <button class="ug-btn ug-btn--ghost" type="submit" name="act" value="notify_dept">
+          부서 통보</button>
+        <button class="ug-btn ug-btn--ghost" type="submit" name="act"
+                value="notify_resident"
+                onclick="return confirm('주민 경보는 되돌릴 수 없습니다. 요청하시겠습니까?')">
+          주민 경보 요청</button>
+        {% endif %}
+        {% if can_notify_agency %}
+        <button class="ug-btn" type="submit" name="act" value="notify_agency"
+                style="width:auto;padding:9px 16px">112/119 통보</button>
+        {% endif %}
+        <button class="ug-btn ug-btn--ghost" type="submit" name="act" value="false_positive">
+          오탐 신고</button>
+        {% if can_close %}
+        <button class="ug-btn ug-btn--ghost" type="submit" name="act" value="close"
+          {% if sop.required_left %}
+          onclick="return confirm('필수 SOP {{ sop.required_left }}건이 아직 이행되지 않았습니다. 그래도 종결하시겠습니까? 미이행 사실이 이력에 남습니다.')"
+          {% endif %}>종결</button>
+        {% endif %}
+      </div>
+    </form>
+    {% if not can_close %}
+    <p class="ug-note">종결은 부서담당자 이상만 할 수 있습니다.</p>
+    {% endif %}
+    {% endif %}
+  </section>
+</div>
+
+{# 디지털 SOP 체크리스트 (S-86 에서 정의).
+
+   화면이 「경계입니다」까지만 말하고 그다음을 근무자 기억에 맡기지 않기 위한
+   것이다. 등급이 오르면 상위 단계가 새로 뜬다.
+
+   필수 미이행이어도 종결을 막지 않는다 — 막으면 사람은 아무 칸이나 찍고
+   넘어간다. 미이행 건수만 남긴다. #}
+<section class="ug-card" style="margin-top:16px">
+  <h3>조치 절차 (SOP)
+    <span style="font-size:.85rem;font-weight:400;color:var(--muted)">
+      {{ sop.done }}/{{ sop.total }}</span>
+    {% if sop.required_left %}
+    <span class="ug-badge ug-badge--warn"
+          style="vertical-align:middle">필수 {{ sop.required_left }}건 미이행</span>
+    {% elif sop.total %}
+    <span class="ug-badge ug-badge--on" style="vertical-align:middle">필수 완료</span>
+    {% endif %}
+  </h3>
+
+  {% if not sop.total %}
+  <p class="ug-empty" style="padding:8px 0">
+    {{ domain_labels.get(ev.domain, ev.domain) }} 「{{ ev.level }}」 등급에 정의된
+    단계가 없습니다.
+    {% if can_edit_sop %}
+    <a href="/settings/sop" style="color:var(--accent)">디지털 SOP (S-86)</a>에서
+    기관 매뉴얼의 조치 순서를 등록하십시오.
+    {% endif %}
+  </p>
+  {% else %}
+  <ol style="margin:0;padding:0;list-style:none">
+    {% for s in sop.steps %}
+    {% set c = sop.checks.get(s.id) %}
+    <li style="display:flex;gap:12px;padding:12px 0;
+               border-top:1px solid var(--border)">
+      <div style="flex:0 0 22px;padding-top:2px;font-size:1.1rem"
+           aria-hidden="true">
+        {% if c and c.skipped %}⊘{% elif c %}✔{% else %}○{% endif %}</div>
+      <div style="flex:1 1 auto;min-width:0">
+        <div style="font-weight:600{% if c %};color:var(--muted){% endif %}">
+          {{ s.title }}
+          {% if not s.required %}
+          <span class="ug-badge ug-badge--off" style="margin-left:4px">권장</span>{% endif %}
+          {% if s.domain %}
+          <span style="font-size:.75rem;color:var(--muted);font-weight:400;
+                       margin-left:4px">{{ s.level or "전체" }}</span>{% endif %}
+        </div>
+        {% if s.detail %}
+        <div style="margin-top:4px;font-size:.85rem;color:var(--muted);
+                    line-height:1.55;white-space:pre-wrap">{{ s.detail }}</div>
+        {% endif %}
+        {% if c %}
+        <div style="margin-top:6px;font-size:.8rem;color:var(--muted)">
+          {% if c.skipped %}<b style="color:#ffcf7a">해당 없음</b> ·{% endif %}
+          {{ c.checked_at.strftime("%m-%d %H:%M") }} · {{ c.login_id or "—" }}
+          {% if c.note %} · {{ c.note }}{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% if can_check %}
+      <div style="flex:0 0 auto;display:flex;gap:6px;align-items:flex-start;
+                  flex-wrap:wrap">
+        {% if c %}
+        <form method="post" action="/events/{{ ev.id }}/sop">
+          <input type="hidden" name="step_id" value="{{ s.id }}">
+          <input type="hidden" name="op" value="uncheck">
+          <button class="ug-btn ug-btn--ghost" type="submit"
+                  style="width:auto;padding:6px 12px;font-size:.8rem">해제</button>
+        </form>
+        {% else %}
+        <form method="post" action="/events/{{ ev.id }}/sop"
+              style="display:flex;gap:6px;flex-wrap:wrap">
+          <input type="hidden" name="step_id" value="{{ s.id }}">
+          <input name="note" placeholder="메모 (선택)"
+                 style="width:140px;padding:6px 9px;font-size:.8rem;
+                        background:var(--bg);color:var(--text);
+                        border:1px solid var(--border);border-radius:6px">
+          <button class="ug-btn" type="submit" name="op" value="check"
+                  style="width:auto;padding:6px 12px;font-size:.8rem">이행</button>
+          {# 「해당 없음」은 사유가 있어야 넘어간다 — 사유 없이 넘길 수 있으면
+             체크리스트가 한 번에 다 넘어가고 아무 의미가 없다. #}
+          <button class="ug-btn ug-btn--ghost" type="submit" name="op" value="skip"
+                  style="width:auto;padding:6px 12px;font-size:.8rem"
+                  onclick="var f=this.form; if(!f.note.value.trim()){alert('「해당 없음」으로 넘기려면 메모에 사유를 적어 주세요.');f.note.focus();return false;} return true;"
+                  >해당 없음</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% if can_edit_sop %}
+  <p class="ug-note">단계 내용은
+    <a href="/settings/sop" style="color:inherit">디지털 SOP (S-86)</a>에서
+    고칩니다.</p>
+  {% endif %}
+  {% endif %}
+</section>
+
+{# 주변 지점 (관계 모델 1단계).
+   근거 — 경남 제안요청서 기대효과 「경계를 넘나드는 재난을 연속 추적」,
+   통상 사양 「알람 발생 카메라 주변 다중 카메라 자동 확인」.
+   ⚠️ 관계가 등록돼 있지 않으면 이 카드 자체가 안 보인다. #}
+{% if nearby %}
+<section class="ug-card" style="margin-top:16px">
+  <h3>주변 지점
+    <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+      {{ nearby|length }}곳</span>
+    <a href="/settings/cameras" style="float:right;font-size:.82rem;
+       color:var(--accent);text-decoration:none">관계 설정 →</a>
+  </h3>
+  <p class="ug-note">
+    이 지점과 이어진 곳입니다. <b>하류</b>는 지금 사건이 다음으로 번질 수 있는
+    방향이라 먼저 보여 줍니다.
+  </p>
+  <ul style="list-style:none;padding:0;margin:10px 0 0;display:flex;
+             flex-wrap:wrap;gap:8px">
+    {% for n in nearby %}
+    <li style="border:1px solid var(--border);border-radius:8px;
+               padding:8px 12px;min-width:0">
+      {% if n.kind == 'downstream' %}
+      <span style="font-size:.72rem;font-weight:700;color:#c92a2a">하류</span>
+      {% else %}
+      <span style="font-size:.72rem;color:var(--muted)">인접</span>
+      {% endif %}
+      <b style="margin-left:6px">{{ n.name }}</b>
+      <span style="font-size:.75rem;color:var(--muted);margin-left:6px">
+        {{ n.id }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{# 증거 영상(S-88). 조치한 사람이 자기 판단의 근거를 볼 수 있어야 한다. #}
+{% if can_see_evidence %}
+<section class="ug-card" style="margin-top:16px">
+  <h3>증거 자료
+    <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+      {{ evidence|length }}건</span>
+    <a href="/admin/evidence?q={{ ev.block_id }}" style="float:right;
+       font-size:.82rem;color:var(--accent);text-decoration:none">전체 관리 →</a>
+  </h3>
+  {% if evidence %}
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    {% for e in evidence %}
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;
+                min-width:180px">
+      <div style="font-size:.82rem;font-weight:600;margin-bottom:4px">
+        {% if e.kind == "image" %}정지영상{% else %}영상 클립{% endif %}
+        {% if e.duration_sec %}
+        <span style="color:var(--muted);font-weight:400">{{ e.duration_sec }}초</span>
+        {% endif %}
+      </div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">
+        {{ e.captured_at.strftime("%m-%d %H:%M:%S") }} · {{ e.level }}</div>
+      {% if e.kind == "image" %}
+      <a href="/admin/evidence/{{ e.id }}/file" target="_blank" rel="noopener">
+        <img src="/admin/evidence/{{ e.id }}/file" alt="증거 정지영상"
+             style="width:220px;max-width:100%;border-radius:6px;display:block">
+      </a>
+      {% else %}
+      <a class="ug-btn ug-btn--ghost" href="/admin/evidence/{{ e.id }}/file"
+         style="width:auto;padding:6px 12px;font-size:.8rem;text-decoration:none"
+        >내려받기</a>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="ug-note">증거 자료는 <b>개인정보</b>입니다. 내려받기는 감사 로그에
+    남으며, 기관 밖으로 제공할 때는 영상 반출 관리대장(S-94)에 기록해야 합니다.</p>
+  {% else %}
+  <p class="ug-empty" style="padding:8px 0">이 이벤트에는 증거 자료가 없습니다.
+    저장 대상 등급인지
+    <a href="/admin/evidence" style="color:var(--accent)">증거 영상 관리(S-88)</a>
+    에서 확인하세요.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="ug-card" style="margin-top:16px">
+  <h3>이력 {{ ev.actions|length }}건</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr><th>시각</th><th>조치</th><th>사용자</th><th>내용</th></tr></thead>
+      <tbody>
+      {% for a in ev.actions|reverse %}
+      <tr>
+        <td>{{ a.created_at.strftime("%m-%d %H:%M:%S") }}</td>
+        <td>{{ action_labels.get(a.action, a.action) }}</td>
+        <td>{{ a.login_id or "시스템" }}</td>
+        <td style="white-space:normal">{{ a.memo or "—" }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="ug-empty">이력이 없습니다.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,613 @@
+{% extends "_layout.html" %}
+{% block title %}ROI 설정 — {{ cam.name }}{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <p style="margin:0 0 6px"><a href="/settings/cameras" style="color:var(--accent);
+     text-decoration:none;font-size:.86rem;font-weight:700">← CCTV 관리</a></p>
+  <h2>ROI 설정 — {{ cam.name }}
+    <span style="font-size:.8rem;color:var(--muted);font-weight:400">S-81</span></h2>
+  <p>탐지서비스마다 보는 영역이 다릅니다. 서비스를 골라 각각 설정하세요.</p>
+</div>
+
+{# 탐지 지정이 꺼진 도메인이라도 저장된 ROI 가 있으면 탭이 남는다.
+   지정을 바꿨다고 애써 그린 영역이 화면에서 사라지면 「지워졌다」로 읽히고,
+   운영자는 다시 그리게 된다 — 그것이 진짜 손실이다. #}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+  {% for dv, dl, on in tabs %}
+  <a href="/settings/cameras/{{ cam.id }}/roi?domain={{ dv }}"
+     class="ug-btn {% if dv != sel_domain %}ug-btn--ghost{% endif %}"
+     style="width:auto;padding:9px 18px;text-decoration:none
+            {% if not on %};opacity:.75{% endif %}"
+     {% if not on %}title="탐지 지정이 꺼져 있습니다. 설정한 영역은 보관 중입니다."{% endif %}
+    >{{ dl }}{% if not on %} <span style="font-size:.72rem">· 미지정</span>{% endif %}</a>
+  {% endfor %}
+</div>
+
+{% if not sel_enabled %}
+<p class="ug-error" role="note" style="background:rgba(210,153,34,.14);
+   border-color:rgba(210,153,34,.45);color:#ffcf7a">
+  이 탐지서비스는 지금 <b>이 지점에 지정돼 있지 않습니다.</b> 설정한 영역은
+  <b>지워지지 않고 보관</b>되며, CCTV 관리(S-80)의 「탐지 지정」에서 다시
+  <b>사용</b>으로 바꾸면 그대로 쓰입니다. 지금 저장해 두어도 됩니다.
+</p>
+{% endif %}
+
+<div id="ug-msg"></div>
+
+<div class="ug-cards" style="grid-template-columns:minmax(0,2.2fr) minmax(0,1fr)">
+  <section class="ug-card">
+    <h3>정지영상</h3>
+    {% if snapshot %}
+    <div style="position:relative;display:inline-block;max-width:100%;
+         border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <img id="roi-img" alt="{{ cam.name }} 정지영상"
+           style="display:block;max-width:100%;height:auto"
+           src="{% if snapshot.startswith('data:') %}{{ snapshot }}{% else %}data:image/jpeg;base64,{{ snapshot }}{% endif %}">
+      <svg id="roi-svg" style="position:absolute;inset:0;width:100%;height:100%;
+           cursor:crosshair"></svg>
+    </div>
+    {% else %}
+    <p class="ug-empty">정지영상을 가져오지 못했습니다.<br>
+      {% if snap_error %}<b>{{ snap_error }}</b><br>{% endif %}
+      {% if cam.source_type == 'video' %}
+        동영상 파일이 서버에 있는지, 경로가 맞는지 확인하세요.
+        현재 경로: <code>{{ cam.source_path or '(비어 있음)' }}</code><br>
+        CCTV 관리 화면의 <b>「수정」</b>에서 파일을 다시 올릴 수 있습니다.
+      {% elif cam.source_type == 'hls' %}
+        스트림 주소와 네트워크 상태를 확인하세요.
+        관제망에서 외부 주소가 막혀 있을 수도 있습니다.<br>
+        현재 주소: <code>{{ cam.source_url or '(비어 있음)' }}</code>
+      {% else %}
+        이 카메라는 <b>합성(synthetic) 소스</b>라 정지영상이 없습니다.
+        ROI를 그리려면 실제 영상 소스가 필요합니다.
+      {% endif %}
+    </p>
+    {% endif %}
+
+    {% if snapshot and mask_failed %}
+    <p class="ug-error" role="alert" style="margin-top:10px">
+      ⚠ 사람 영역을 가리지 못한 화면입니다(마스킹 검출기 미동작).
+      ROI 작업에 필요해 그대로 표시하고 있으니, 화면 갈무리·외부 공유에 주의하세요.
+    </p>
+    {% endif %}
+  </section>
+
+  <section class="ug-card">
+    <h3>그리기</h3>
+    <div class="ug-field">
+      <label for="shape">영역 종류</label>
+      <select id="shape" style="width:100%;padding:11px 12px;background:var(--bg);
+              color:var(--text);border:1px solid var(--border);border-radius:8px">
+        {% for key, label, kind, required in shapes %}
+        <option value="{{ key }}" data-kind="{{ kind }}">
+          {{ label }}{% if required %} (필수){% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <p class="ug-note" style="margin-top:0">
+      영상을 클릭해 꼭짓점을 찍고, <b>다각형 닫기</b>로 한 영역을 완성합니다.
+      선(線)은 점 2개만 찍으면 됩니다. <b>통행 방향(화살표)</b>는 클릭 2번
+      (시작점→끝점)마다 자동으로 추가됩니다 — 화살촉이 끝점을 가리킵니다.
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="ug-btn" type="button" id="btn-close"
+              style="width:auto;padding:8px 14px">다각형 닫기</button>
+      <button class="ug-btn ug-btn--ghost" type="button" id="btn-undo">되돌리기</button>
+      <button class="ug-btn ug-btn--ghost" type="button" id="btn-clear">현재 종류 지우기</button>
+    </div>
+
+    {% if sel_domain == 'traffic' %}
+    {# ★ 2026-08-26 — 통행 방향 자동 생성(Phase 4-A). 실행 중인 상시
+       탐지의 누적 관측에서 화살표를 "제안"만 한다 — 저장은 사람이
+       확인한 뒤 아래 저장 버튼으로 확정한다(검토 대기 원칙). #}
+    <div style="margin:-4px 0 12px">
+      <button class="ug-btn ug-btn--ghost" type="button" id="btn-flow-propose"
+              style="width:auto;padding:8px 14px">
+        🡒 통행 방향 자동 생성(제안)</button>
+      <p class="ug-note" style="margin-top:6px">
+        상시 탐지 중인 카메라의 누적 관측에서 통행 방향을 제안합니다.
+        <b>제안된 화살표도 저장을 눌러야 반영됩니다</b> — 그 전에 그림을
+        보고 틀린 것은 지우거나 고치세요.
+      </p>
+    </div>
+    {% endif %}
+
+    <table class="ug-table" style="min-width:0">
+      <tbody id="counts">
+        {% for key, label, kind, required in shapes %}
+        <tr><th>{{ label }}</th><td><span data-count="{{ key }}">0</span></td></tr>
+        {% endfor %}
+        <tr><th>원본 해상도</th><td><span id="frame-size">—</span></td></tr>
+      </tbody>
+    </table>
+
+    {% if can_edit %}
+    <button class="ug-btn" type="button" id="btn-save" style="margin-top:14px">저장</button>
+    {% else %}
+    <p class="ug-note">조회 권한만 있습니다.</p>
+    {% endif %}
+    {# ⚠️ 2026-08-23: 전에는 도메인과 무관하게 항상 "재시작 필요"라고 고정
+       돼 있었다 — 침수·노면·교통은 이미 재시작 없이 반영되는데(routes_
+       cameras.py::roi_save() 의 note 참고), 이 문구만 안 고쳐져 실제로는
+       바로 반영되는데도 "재시작해야 한다"고 오해를 줬다. #}
+    <p class="ug-note">
+      {% if sel_domain == 'crowd' %}
+      저장해도 <b>서비스를 재시작해야</b> 탐지에 반영됩니다.
+      {% else %}
+      저장하면 <b>재시작 없이 곧바로</b> 탐지에 반영됩니다.
+      {% endif %}
+    </p>
+  </section>
+</div>
+
+{% if sel_domain in ('flood', 'traffic', 'crowd') %}
+{# ★ 2026-08-28 — 지면 평면 캘리브레이션(호모그래피). 「4대탐지기능
+   성능개선 로드맵」 1순위 — 함수는 이미 구현돼 있었는데 실제로 값을
+   넣을 화면이 없어(원시 JSON 텍스트칸뿐) 39개소 전부 0건이었다. 여기서
+   현장에서 잰 **직사각형 하나**(가로·세로 미터)만 알면 되도록 단순화
+   했다 — 화면 좌표는 클릭 4번으로 찍는다. #}
+<section class="ug-card" style="margin-top:16px">
+  <h3>지면 평면 캘리브레이션 <span style="font-size:.8rem;color:var(--muted);
+      font-weight:400">— 명/㎡·km/h·㎡ 등 실제 단위 환산용</span></h3>
+  <p class="ug-note" style="margin-top:0">
+    화면 속 <b>평평한 직사각형 하나</b>(횡단보도·보도블록·주차구획 등)를
+    현장에서 실측한 뒤, 그 네 꼭짓점을 <b>좌상→우상→우하→좌하</b> 순서로
+    영상 위에 클릭하고 가로·세로 길이(m)를 입력하면 됩니다. 보정 전에는
+    "미보정"으로 정직하게 표시되며, 지어내지 않습니다.
+  </p>
+  <p class="ug-error" role="note" style="background:rgba(210,153,34,.14);
+     border-color:rgba(210,153,34,.45);color:#ffcf7a">
+    ⚠ 아래 가로·세로 길이 칸은 <b>일반적인 차로 폭 근사치(3.50m)를 참고용
+    기본값</b>으로 채워 뒀습니다 — <b>실제로 측정한 값이 아닙니다.</b>
+    현장 실측 전 시범 적용 용도이며, 정확도가 낮을 수 있습니다. 화면에서
+    찍은 네 점이 실제로 무엇인지(차로 하나인지, 횡단보도인지 등) 확인해
+    맞는 값으로 반드시 고쳐 주세요 — 그대로 두면 그 근사치로 저장됩니다.
+  </p>
+  <p>
+    현재 상태:
+    {% if calibration_ground and calibration_ground.image_points %}
+    <b style="color:#3fb950">보정됨</b>
+    {% else %}
+    <b style="color:#d4a017">미보정</b>
+    {% endif %}
+  </p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="ug-btn ug-btn--ghost" type="button" id="btn-calib-mode"
+            style="width:auto;padding:8px 14px">캘리브레이션 점 찍기 시작</button>
+    <button class="ug-btn ug-btn--ghost" type="button" id="btn-calib-undo"
+            style="width:auto;padding:8px 14px">점 되돌리기</button>
+  </div>
+  {# ⚠️ 이 라우트(/calibration)는 저장 후 CCTV 관리 목록 페이지를 그대로
+     돌려주는 전통적 폼 제출 방식이다(기존 cameras.html의 원시 JSON
+     입력칸과 같은 방식) — fetch/JSON이 아니다. 그래서 여기도 실제
+     <form> 제출로 맞춘다: 클릭으로 찍은 점·길이 입력을 JS가 숨은 필드에
+     채운 뒤 제출한다. #}
+  <form method="post" action="/settings/cameras/{{ cam.id }}/calibration" id="calib-form">
+    <input type="hidden" name="domain" value="{{ sel_domain }}">
+    <input type="hidden" name="ground_image_points" id="calib-image-points-input">
+    <input type="hidden" name="ground_world_points" id="calib-world-points-input">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+      <div class="ug-field" style="margin:0">
+        <label for="calib-w">가로 길이(m) <span style="font-weight:400;
+              color:var(--muted);font-size:.78rem">— 기본값(참고용)</span></label>
+        <input type="number" id="calib-w" step="0.01" min="0.01" value="3.50"
+               style="width:140px;padding:9px 10px;background:var(--bg);color:var(--text);
+                      border:1px solid var(--border);border-radius:8px">
+      </div>
+      <div class="ug-field" style="margin:0">
+        <label for="calib-h">세로 길이(m) <span style="font-weight:400;
+              color:var(--muted);font-size:.78rem">— 기본값(참고용)</span></label>
+        <input type="number" id="calib-h" step="0.01" min="0.01" value="3.50"
+               style="width:140px;padding:9px 10px;background:var(--bg);color:var(--text);
+                      border:1px solid var(--border);border-radius:8px">
+      </div>
+      <span id="calib-count" style="color:var(--muted);font-size:.86rem">점 0/4</span>
+    </div>
+    {% if can_edit %}
+    <button class="ug-btn" type="submit" id="btn-calib-save" style="width:auto;padding:9px 18px">
+      캘리브레이션 저장</button>
+    {% endif %}
+  </form>
+  <p class="ug-note">저장하면 재시작 없이 곧바로 반영됩니다. 저장을 누르면
+    이 화면에서 CCTV 관리 목록으로 이동합니다(기존 캘리브레이션 저장
+    방식과 동일).</p>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var img = document.getElementById('roi-img');
+  if (!img) return;
+  var svg = document.getElementById('roi-svg');
+  var CAM = {{ cam.id | tojson }};
+  var DOMAIN = {{ sel_domain | tojson }};
+  var SHAPES = {{ shapes | tojson }};          // [key, label, kind, required]
+  var PALETTE = ['#3fb950', '#e5484d', '#58a6ff', '#d4a017'];
+
+  // 저장된 좌표는 원본 해상도 기준. 화면 표시 배율과 분리해 관리한다.
+  var data = {{ (roi.shapes or {}) | tojson }};
+  SHAPES.forEach(function (s) { if (!data[s[0]]) data[s[0]] = []; });
+
+  // ROI 저장 당시의 해상도. 지금 뜬 정지영상이 이것과 다르면(예: 상시
+  // 탐지 파이프라인이 캐시해 둔 축소 프레임을 쓰는 경우) 좌표를 그대로
+  // 그리면 화면 밖으로 나가 "분명 저장돼 있는데 안 보인다"가 된다
+  // (2026-08-23 실사용 중 발견). measure() 에서 한 번 비례 보정한다.
+  var STORED_W = {{ roi.frame_width or 0 }};
+  var STORED_H = {{ roi.frame_height or 0 }};
+
+  var draft = [];
+  var frameW = 0, frameH = 0;
+
+  // ── 지면 평면 캘리브레이션 상태 (2026-08-28) ────────────────────────
+  // ⚠️ 아래 두 변수는 이 도메인에 캘리브레이션 UI가 없어도(노면 등)
+  // 항상 정의돼 있어야 한다 — 기존 svg 클릭 리스너(352행)가 이 값을
+  // 참조하기 때문이다. `var` 는 함수 스코프라 뒤쪽 `if (calibModeBtn)`
+  // 블록 안에서 다시 대입해도 여기 선언과 같은 변수를 가리킨다.
+  var calibMode = false;
+  var calibPoints = [];
+
+  function sel() { return document.getElementById('shape'); }
+  function key() { return sel().value; }
+  function kind() { return sel().selectedOptions[0].dataset.kind; }
+  function colorOf(k) {
+    var i = SHAPES.findIndex(function (s) { return s[0] === k; });
+    return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
+  }
+
+  // 저장된 좌표(STORED_W×STORED_H 기준)를 지금 뜬 정지영상 크기로 비례
+  // 보정한다. 선(line)은 [[x1,y1],[x2,y2]] 평면 배열, 다각형은 그 배열의
+  // 배열이라 모양이 달라 kind 별로 나눠 처리해야 한다.
+  function rescaleData(rx, ry) {
+    SHAPES.forEach(function (s) {
+      var k = s[0], isLine = s[2] === 'line';
+      var scalePt = function (p) { return [Math.round(p[0] * rx), Math.round(p[1] * ry)]; };
+      if (isLine) {
+        if (data[k] && data[k].length === 2) data[k] = data[k].map(scalePt);
+      } else {
+        data[k] = (data[k] || []).map(function (poly) { return poly.map(scalePt); });
+      }
+    });
+  }
+
+  function measure() {
+    frameW = img.naturalWidth || {{ roi.frame_width or 0 }};
+    frameH = img.naturalHeight || {{ roi.frame_height or 0 }};
+    document.getElementById('frame-size').textContent =
+      frameW && frameH ? frameW + ' × ' + frameH : '확인 불가';
+    if (STORED_W && STORED_H && frameW && frameH &&
+        (STORED_W !== frameW || STORED_H !== frameH)) {
+      rescaleData(frameW / STORED_W, frameH / STORED_H);
+      STORED_W = frameW; STORED_H = frameH;  // 한 번만 보정(재실행 방지)
+    }
+  }
+
+  function toFrame(evt) {
+    var r = img.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    return [Math.max(0, Math.min(frameW - 1,
+              Math.round((evt.clientX - r.left) / r.width * frameW))),
+            Math.max(0, Math.min(frameH - 1,
+              Math.round((evt.clientY - r.top) / r.height * frameH)))];
+  }
+
+  function el(n, a) {
+    var e = document.createElementNS('http://www.w3.org/2000/svg', n);
+    for (var k in a) e.setAttribute(k, a[k]);
+    return e;
+  }
+
+  // 화살표 끝에 붙일 화살촉. 방향을 눈으로 못 보면 반대로 그려도 알 수
+  // 없다 — 팔레트 색마다 하나씩(4개면 충분, 도메인당 도형 수가 그 정도).
+  function addArrowheadDefs() {
+    var defs = el('defs', {});
+    PALETTE.forEach(function (c, i) {
+      var m = el('marker', { id: 'roi-arrowhead-' + i, viewBox: '0 0 10 10',
+        refX: 8, refY: 5, markerWidth: 6, markerHeight: 6,
+        orient: 'auto-start-reverse' });
+      m.appendChild(el('path', { d: 'M0,0 L10,5 L0,10 z', fill: c }));
+      defs.appendChild(m);
+    });
+    svg.appendChild(defs);
+  }
+
+  function render() {
+    svg.setAttribute('viewBox', '0 0 ' + (frameW || 1) + ' ' + (frameH || 1));
+    svg.setAttribute('preserveAspectRatio', 'none');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var w = Math.max(1, Math.round(frameW / 250));
+    addArrowheadDefs();
+
+    SHAPES.forEach(function (s) {
+      var k = s[0], shapeKind = s[2], col = colorOf(k);
+      var v = data[k] || [];
+      if (shapeKind === 'line') {
+        if (v.length === 2) {
+          svg.appendChild(el('line', { x1: v[0][0], y1: v[0][1],
+            x2: v[1][0], y2: v[1][1], stroke: col, 'stroke-width': w * 1.4 }));
+        }
+      } else if (shapeKind === 'arrows') {
+        var mi = SHAPES.findIndex(function (x) { return x[0] === k; });
+        var markerId = 'roi-arrowhead-' + ((mi < 0 ? 0 : mi) % PALETTE.length);
+        v.forEach(function (arr) {
+          if (!arr || arr.length !== 2) return;
+          svg.appendChild(el('line', { x1: arr[0][0], y1: arr[0][1],
+            x2: arr[1][0], y2: arr[1][1], stroke: col, 'stroke-width': w * 1.4,
+            'marker-end': 'url(#' + markerId + ')' }));
+        });
+      } else {
+        v.forEach(function (poly) {
+          if (!poly || poly.length < 3) return;
+          svg.appendChild(el('polygon', {
+            points: poly.map(function (p) { return p.join(','); }).join(' '),
+            fill: col, 'fill-opacity': 0.18, stroke: col, 'stroke-width': w }));
+        });
+      }
+      var span = document.querySelector('[data-count="' + k + '"]');
+      if (span) span.textContent = shapeKind === 'line'
+        ? (v.length === 2 ? '설정됨' : '없음') : (v.length + '개');
+    });
+
+    if (draft.length) {
+      var col = colorOf(key());
+      svg.appendChild(el('polyline', {
+        points: draft.map(function (p) { return p.join(','); }).join(' '),
+        fill: 'none', stroke: col, 'stroke-width': w, 'stroke-dasharray': w * 3 }));
+      draft.forEach(function (p) {
+        svg.appendChild(el('circle', { cx: p[0], cy: p[1], r: w * 2, fill: col }));
+      });
+    }
+    // ★ render()가 svg 내용을 통째로 지우고 다시 그리므로(300행), 그
+    // 위에 얹는 캘리브레이션 점 표시도 매번 다시 그려야 지워지지 않는다.
+    // renderCalib는 캘리브레이션 UI가 있는 도메인에서만 정의된다
+    // (아래 절, `if (calibModeBtn)` 안) — 함수 선언의 블록 호이스팅은
+    // 엔진마다 미묘하게 달라 기대기보다 존재 여부를 직접 확인한다.
+    if (typeof renderCalib === 'function') renderCalib();
+  }
+
+  function msg(t, ok) {
+    document.getElementById('ug-msg').innerHTML =
+      '<p class="ug-error" role="status" style="' +
+      (ok ? 'background:rgba(63,185,80,.14);border-color:rgba(63,185,80,.4);color:#8ee89f' : '')
+      + '">' + t + '</p>';
+  }
+
+  svg.addEventListener('click', function (e) {
+    // ★ 캘리브레이션 점 찍기 모드일 때는 ROI 도형 편집으로 새지 않게
+    // 여기서 먼저 가로챈다(같은 svg 하나를 두 기능이 같이 쓴다 — 별도
+    // 리스너로 나누면 클릭 대상이 svg 자신일 때 등록 순서에 실행 순서가
+    // 좌우돼 두 로직이 동시에 반응할 위험이 있다). renderCalib()는
+    // 아래(캘리브레이션 절)에서 정의하지만 함수 선언이라 호이스팅되어
+    // 여기서도 바로 부를 수 있다.
+    if (calibMode) {
+      if (calibPoints.length >= 4) {
+        msg('이미 4점을 찍었습니다. 다시 찍으려면 "점 되돌리기"를 누르세요.');
+        return;
+      }
+      var cp = toFrame(e);
+      if (!cp) return;
+      calibPoints.push(cp);
+      updateCalibCount();
+      renderCalib();
+      if (calibPoints.length === 4) {
+        calibMode = false;
+        calibModeBtn.textContent = '캘리브레이션 점 찍기 시작';
+        calibModeBtn.classList.add('ug-btn--ghost');
+        msg('4점을 다 찍었습니다. 가로·세로 길이를 입력한 뒤 저장하세요.', true);
+      }
+      return;
+    }
+    var p = toFrame(e);
+    if (!p) return;
+    var k2 = kind();
+    if (k2 === 'line') {
+      draft.push(p);
+      if (draft.length === 2) { data[key()] = draft.slice(); draft = []; }
+      else if (draft.length > 2) { draft = [p]; }
+    } else if (k2 === 'arrows') {
+      // 클릭 2번(시작→끝)마다 자동으로 화살표 하나를 추가한다 — 「다각형
+      // 닫기」처럼 사람이 매번 눌러야 하면 39대×여러 화살표를 그릴 때
+      // 손이 더 간다.
+      draft.push(p);
+      if (draft.length === 2) {
+        data[key()] = (data[key()] || []).concat([draft.slice()]);
+        draft = [];
+        msg('화살표를 추가했습니다. 저장을 눌러야 기록됩니다.', true);
+      }
+    } else {
+      draft.push(p);
+    }
+    render();
+  });
+
+  document.getElementById('btn-close').addEventListener('click', function () {
+    if (kind() === 'line') { msg('선은 점 2개만 찍으면 됩니다.'); return; }
+    if (kind() === 'arrows') {
+      msg('화살표는 점 2개(시작→끝)를 찍으면 자동으로 추가됩니다.'); return;
+    }
+    if (draft.length < 3) { msg('다각형은 꼭짓점이 3개 이상이어야 합니다.'); return; }
+    data[key()] = (data[key()] || []).concat([draft.slice()]);
+    draft = []; render();
+    msg('영역을 추가했습니다. 저장을 눌러야 기록됩니다.', true);
+  });
+
+  document.getElementById('btn-undo').addEventListener('click', function () {
+    if (draft.length) draft.pop();
+    else if (kind() === 'line') data[key()] = [];
+    else if ((data[key()] || []).length) data[key()].pop();
+    render();
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', function () {
+    draft = []; data[key()] = []; render();
+  });
+
+  sel().addEventListener('change', function () { draft = []; render(); });
+
+  var flowBtn = document.getElementById('btn-flow-propose');
+  if (flowBtn) flowBtn.addEventListener('click', function () {
+    flowBtn.disabled = true;
+    // ⚠️ 2026-08-31(API 게이트웨이 Phase 4) — 이 API가 traffic-service로
+    // 옮겨지며 경로가 바뀌었다(실행 중인 교통 추적기 상태가 있어야
+    // 답할 수 있어, /settings/cameras/* 접두사(플랫폼셸 전용) 밖으로
+    // 나왔다).
+    fetch('/api/traffic/roi-flow/propose?camera_id=' + encodeURIComponent(CAM))
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        flowBtn.disabled = false;
+        if (!res.ok) { msg((res.errors || ['제안에 실패했습니다.']).join(' ')); return; }
+        // ★ 제안일 뿐이다 — 기존 화살표를 지우지 않고 더한다. 관리자가
+        //   보고 틀린 것을 지우거나(되돌리기/현재 종류 지우기) 저장을
+        //   눌러야 실제로 반영된다.
+        var added = (res.arrows || []).map(function (a) { return a.points; });
+        data['flow_arrows'] = (data['flow_arrows'] || []).concat(added);
+        render();
+        var parts = [];
+        parts.push('화살표 ' + added.length + '개를 제안했습니다(관측 '
+          + res.sample_count + '건). <b>저장을 눌러야 반영됩니다.</b>');
+        if ((res.review_needed || []).length) {
+          parts.push((res.review_needed.length)
+            + '개 구역은 방향이 뒤섞여 있어(왕복 차선 등) 자동 판정을 건너뛰었습니다 — '
+            + '그 구역은 직접 그려 주세요.');
+        }
+        msg(parts.join('<br>'), true);
+      })
+      .catch(function () {
+        flowBtn.disabled = false;
+        msg('제안 요청에 실패했습니다.');
+      });
+  });
+
+  var save = document.getElementById('btn-save');
+  if (save) save.addEventListener('click', function () {
+    save.disabled = true;
+    fetch('/settings/cameras/' + encodeURIComponent(CAM) + '/roi/' + DOMAIN, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frame_width: frameW, frame_height: frameH,
+                             shapes: data })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        save.disabled = false;
+        if (res.ok) {
+          // ⚠ 저장은 됐지만 진단에 걸린 것이 있으면 함께 보여 준다 —
+          //   막지 않는 이유는 정당한 설정도 걸릴 수 있어서다(좁게 그린
+          //   구역 등). 안 보여 주면 잘못 그린 ROI 를 그대로 쓰게 된다.
+          var w = res.warnings || [];
+          if (w.length) {
+            msg(res.message + '<br><b>⚠ 확인이 필요합니다</b><ul style="margin:6px 0 0 18px">'
+                + w.map(function (x) { return '<li>' + x + '</li>'; }).join('')
+                + '</ul>', false);
+          } else {
+            msg(res.message, true);
+          }
+        }
+        else msg((res.errors || ['저장에 실패했습니다.']).join(' '), false);
+      })
+      .catch(function () { save.disabled = false; msg('저장 요청에 실패했습니다.'); });
+  });
+
+  // ── 지면 평면 캘리브레이션 (2026-08-28) ──────────────────────────────
+  // 같은 이미지·SVG를 재사용한다 — 별도 캔버스를 새로 안 만든다.
+  var calibModeBtn = document.getElementById('btn-calib-mode');
+  if (calibModeBtn) {
+    // ⚠️ calibMode/calibPoints는 이 파일 위쪽(230행 부근)에서 이미
+    // 선언했다 — 캘리브레이션 UI가 없는 도메인(노면 등)에서도 기존 svg
+    // 클릭 리스너(아래 352행)가 그 변수를 안전하게 참조할 수 있어야
+    // 하기 때문이다. 여기서는 재선언하지 않고 값만 채운다.
+    //
+    // ⚠️ ROI(위 rescaleData)와 달리 캘리브레이션은 저장 당시의 해상도를
+    // 따로 기록하지 않는다(core/calibration.py의 GroundPlane에 그 필드가
+    // 없음) — 지금 뜬 정지영상 해상도가 저장 당시와 달라지면 기존 점이
+    // 어긋나 보일 수 있다(이 저장소가 ROI에서 겪었던 것과 같은 종류의
+    // 해상도 불일치 함정). 지금은 이 화면이 신설이라 저장된 값이 아직
+    // 없어 당장 영향은 없다 — 카메라 해상도가 나중에 바뀌면 재확인이
+    // 필요하다.
+    var CALIB_EXISTING = {{ (calibration_ground.image_points if calibration_ground else []) | tojson }};
+    calibPoints = CALIB_EXISTING.slice();
+
+    function calibCountEl() { return document.getElementById('calib-count'); }
+    function updateCalibCount() {
+      calibCountEl().textContent = '점 ' + calibPoints.length + '/4';
+    }
+
+    function renderCalib() {
+      var old = svg.querySelectorAll('.ug-calib-mark');
+      old.forEach(function (n) { n.parentNode.removeChild(n); });
+      var w = Math.max(1, Math.round(frameW / 250));
+      var col = '#ff8c3f';
+      calibPoints.forEach(function (p, i) {
+        var c = el('circle', { cx: p[0], cy: p[1], r: w * 2.4, fill: col,
+          'class': 'ug-calib-mark' });
+        svg.appendChild(c);
+        var t = el('text', { x: p[0] + w * 3, y: p[1] - w * 2, fill: col,
+          'font-size': Math.max(12, w * 6), 'font-weight': 'bold',
+          'class': 'ug-calib-mark' });
+        t.textContent = String(i + 1);
+        svg.appendChild(t);
+        if (i > 0) {
+          var prev = calibPoints[i - 1];
+          svg.appendChild(el('line', { x1: prev[0], y1: prev[1],
+            x2: p[0], y2: p[1], stroke: col, 'stroke-width': w,
+            'stroke-dasharray': w * 2, 'class': 'ug-calib-mark' }));
+        }
+        if (i === 3) {
+          var first = calibPoints[0];
+          svg.appendChild(el('line', { x1: p[0], y1: p[1],
+            x2: first[0], y2: first[1], stroke: col, 'stroke-width': w,
+            'stroke-dasharray': w * 2, 'class': 'ug-calib-mark' }));
+        }
+      });
+    }
+
+    calibModeBtn.addEventListener('click', function () {
+      calibMode = !calibMode;
+      calibModeBtn.textContent = calibMode
+        ? '캘리브레이션 점 찍기 중 (끄려면 클릭)' : '캘리브레이션 점 찍기 시작';
+      calibModeBtn.classList.toggle('ug-btn', calibMode);
+      calibModeBtn.classList.toggle('ug-btn--ghost', !calibMode);
+    });
+
+    document.getElementById('btn-calib-undo').addEventListener('click', function () {
+      calibPoints.pop();
+      updateCalibCount(); renderCalib();
+    });
+
+    // ★ 클릭 처리 자체는 위(366행)의 기존 svg 리스너 맨 앞에서
+    // `if (calibMode) {...}` 로 가로챈다 — 여기 별도 리스너를 두지
+    // 않는다. 같은 svg 하나에 리스너를 두 개 걸면, 클릭 대상이 svg
+    // 자신일 때(도형이 없는 빈 자리를 클릭하는 경우가 흔하다) capture
+    // 플래그와 무관하게 "등록 순서"대로 실행돼(target 단계는 capture·
+    // bubble 구분이 없다) ROI 쪽 로직이 먼저 반응해 버릴 수 있었다
+    // (실제로 이 구현 중 발견해 고침).
+
+    document.getElementById('calib-form').addEventListener('submit', function (e) {
+      if (calibPoints.length !== 4) {
+        e.preventDefault();
+        msg('네 꼭짓점을 모두 찍어야 저장할 수 있습니다(현재 '
+            + calibPoints.length + '/4).');
+        return;
+      }
+      var wv = parseFloat(document.getElementById('calib-w').value);
+      var hv = parseFloat(document.getElementById('calib-h').value);
+      if (!(wv > 0) || !(hv > 0)) {
+        e.preventDefault();
+        msg('가로·세로 길이(m)를 0보다 크게 입력하세요.');
+        return;
+      }
+      // 클릭 순서(좌상→우상→우하→좌하)에 대응하는 실제 좌표(m).
+      var worldPts = [[0, 0], [wv, 0], [wv, hv], [0, hv]];
+      document.getElementById('calib-image-points-input').value = JSON.stringify(calibPoints);
+      document.getElementById('calib-world-points-input').value = JSON.stringify(worldPts);
+    });
+
+    updateCalibCount(); renderCalib();
+    window.addEventListener('resize', renderCalib);
+  }
+
+  if (img.complete) { measure(); render(); }
+  else { img.addEventListener('load', function () { measure(); render(); }); }
+  window.addEventListener('resize', render);
+})();
+</script>
+{% endblock %}

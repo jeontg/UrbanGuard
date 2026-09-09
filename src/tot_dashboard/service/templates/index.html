@@ -1,36 +1,65 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>부산광역시 스마트도시 특화단지 서비스</title>
-<link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-<header>
-  <h1>부산광역시 스마트도시 특화단지 서비스</h1>
-  <p class="subtitle">도시관리 및 복합재난 대응 통합 대시보드</p>
-</header>
+{# 도메인별 심층 분석 화면(침수·인파·노면).
+
+   ⚠️ 2026-08-14 부터 **공통 셸(_layout.html)을 상속**한다. 예전에는 독립
+   페이지라 이 화면에 들어오면 **왼쪽 메뉴가 사라져**, 다른 도메인으로 가려면
+   「← 통합 상황판」으로 되돌아가야 했다. 관제 중에 화면을 오가는 일이 잦아
+   메뉴가 계속 보여야 한다.
+
+   본문(탭·모달)은 flood3 원본을 그대로 쓰되, 머리말·계정 표시는 셸이 맡는다. #}
+{% extends "_layout.html" %}
+
+{% block title %}{{ org_name }} {{ solution_name }} — 도메인별 심층 분석{% endblock %}
+
+{% block content %}
+
+<p class="ug-page-title">도메인별 심층 분석 — 침수·교통·인파·노면</p>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="flood">침수·교통위험</button>
+  <button class="tab-btn active" data-tab="traffic">교통위험</button>
+  <button class="tab-btn" data-tab="flood">침수</button>
   <button class="tab-btn" data-tab="crowd">인파관리(위험행동 탐지)</button>
-  <button class="tab-btn" data-tab="runs">침수 분석(water seg)</button>
+  <button class="tab-btn" data-tab="runs">침수 분석 이력(water seg)</button>
+  <button class="tab-btn" data-tab="road">노면 현황</button>
+  <button class="tab-btn" data-tab="road-detect">AI 탐지 실행</button>
 </nav>
 
-<main>
-  <!-- flood3 원본 대시보드를 그대로 이식한 탭 (docs/integration_plan.md 참고) -->
-  <section id="tab-flood" class="tab-panel active">
+<div class="ug-tabwrap">
+  <!-- 교통위험 — 강우 × 차량 감속·정지 판정 (2026-08-21 침수와 분리).
+       상태줄·강수바·타임라인은 이쪽에 둔다. 판정 등급(관심~심각)이
+       타임라인 색을 정하는데, 그 등급이 교통·기상 판정에서 나오기 때문이다. -->
+  <section id="tab-traffic" class="tab-panel ug-board active">
     <div class="flood3-status"><span id="mode"></span><span id="dot" class="dot"></span><span id="status">연결 중…</span></div>
     <div id="rainbar" class="rainbar"></div>
     <div class="tlhead">교차로별 위험등급 타임라인
       <span class="legend"><i style="background:#3fb950"></i>관심<i style="background:#d4a017"></i>주의<i style="background:#e8843b"></i>경계<i style="background:#e5484d"></i>심각</span>
     </div>
     <div id="timelines" class="timelines"></div>
-    <div id="grid" class="grid"></div>
+    <div id="traffic-grid" class="grid"></div>
+  </section>
+
+  <!-- 침수 — 물 세그멘테이션(RiskEngine) 실시간 판정.
+       S-23 「침수 분석 이력」 탭과 다르다: 이쪽은 지금 도는 실시간 값이고,
+       그쪽은 tot-flood-standalone 오프라인 실행 결과다. -->
+  <section id="tab-flood" class="tab-panel ug-board">
+    <div id="flood-grid" class="grid"></div>
   </section>
 
   <section id="tab-crowd" class="tab-panel">
+    <!-- CCTV 선택 탐지 (S-30) -- 관제요원이 지점을 골라 30초 관측한다.
+         전 지점 상시 분석은 CPU가 감당하지 못해 「선택 탐지」로 운영한다. -->
+    <div id="crowd-cctv" class="crowd-live"></div>
+
+    <!-- 실시간 위험행동 탐지 — 상시 지정 카메라별 (2026-08-27, 교통위험과
+         같은 방식). 예전엔 39개소 중 첫 번째 카메라 하나만 보여줬다
+         (loadCrowdLive/#crowd-live — app.js 참고, 지금은 안 부름). -->
+    <h3 class="crowd-sec-title">실시간 위험행동 탐지 (상시 · 카메라별)
+      <span style="font-size:.8rem;color:var(--muted);font-weight:400">
+        — CCTV 관리(S-80)에서 「인파·상시」로 지정한 카메라마다 별도로
+        계속 관측합니다. 방금 지정을 켠 카메라는 다음 서비스 재기동부터
+        나타납니다.</span></h3>
+    <div id="crowd-continuous" class="card-grid"></div>
+
+    <h3 class="crowd-sec-title">분석 사례 (사후 분석 결과)</h3>
     <div class="crowd-layout">
       <div id="case-list" class="card-grid case-list"></div>
       <div id="case-detail" class="case-detail">
@@ -48,7 +77,61 @@
       </div>
     </div>
   </section>
-</main>
+
+  <!-- Phase 1(UI 뼈대 + mock 데이터) -- docs/road_surface_management_plan.md 참고.
+       실제 AI 노면 손상 탐지 모델은 아직 없어 mock 데이터로만 화면을 구성한다. -->
+  {# ⚠️ 2026-08-24 — "노면 현황(S-40)"과 "AI 탐지 실행(S-41)"이 그동안
+     같은 탭 하나(/road, /road/detect 둘 다 이 탭 하나를 열었다)에 섞여
+     있어, 메뉴는 둘인데 화면은 하나뿐이었다(사용자 지적). 다른 도메인
+     (침수/교통위험처럼)과 같은 패턴으로 **탭 자체를 둘로 나눈다** — DOM·
+     JS·모달(livemodal 등)은 그대로 공유하므로, 두 화면을 오가는 연계
+     기능(실시간 보기·보고서·집중감시 등)은 그대로 동작한다. #}
+  <section id="tab-road" class="tab-panel">
+    <!-- S-44 실시간 관제 -- 상시 순회는 지점당 15분 주기라, 결빙·낙하물처럼
+         분 단위로 변하는 상황에는 대응할 수 없다. 지점을 골라 짧은 주기로
+         반복 관측(집중 감시)하고, 결과가 얼마나 오래됐는지 함께 보여 준다. -->
+    <div id="road-live" class="road-live"></div>
+
+    <!-- 지점을 고르면 그 지점의 관측 이력이 여기 표로 나온다. 실시간 관제
+         패널과 분리한 이유 — 10초마다 다시 그려도 선택이 풀리지 않아야 한다. -->
+    <div id="road-history" class="road-live hidden"></div>
+
+    {# ⚠️ 2026-08-24 — "가진 영상에서 프레임 뽑기"는 **탐지를 실행하는
+       기능이 아니라 학습 데이터를 모으는 기능**이라 "AI 탐지 실행" 탭에
+       있으면 이름과 안 맞는다는 지적(사용자)에 따라 이쪽으로 옮겼다.
+       실시간 관제 패널(road-live) 안의 "학습 데이터 자동 수집" 현황과
+       같은 성격이라 바로 옆에 둔다. 별도 div로 둔 이유는 그대로다 —
+       road-live 는 10초마다 통째로 다시 그려지는데, 폼이 그 안에 있으면
+       선택해 둔 파일이 그때마다 사라진다. #}
+    <div id="road-train" class="road-live"></div>
+
+    <h3 class="crowd-sec-title">지점별 노면 상태
+      <span style="font-size:.8rem;color:var(--muted);font-weight:400">
+        — CCTV 관리(S-80)에서 「도로 노면 관리」로 지정한 지점입니다.
+        지점을 고르면 오른쪽에 탐지 결과가 남습니다. 여기서 바로 분석을
+        실행할 수도 있습니다 — 「AI 탐지 실행」 탭으로 옮겨 다시 고를
+        필요 없습니다.</span></h3>
+    <div class="crowd-layout">
+      <div id="road-list" class="card-grid case-list"></div>
+      <div id="road-detail" class="case-detail">
+        <p class="hint">왼쪽에서 지점을 선택하세요. 선택한 지점의 탐지 결과가 여기에 표시됩니다.</p>
+      </div>
+    </div>
+  </section>
+
+  {# AI 탐지 실행(S-41) — 기존 영상 파일 또는 실시간 CCTV를 직접 골라
+     그 자리에서 즉시 AI 탐지를 실행하는 온디맨드 도구. 노면 현황(위
+     tab-road)의 자동 15분 순회 결과 열람과는 성격이 달라 탭을 분리했다. #}
+  <section id="tab-road-detect" class="tab-panel">
+    <p class="hint mock-hint">⚠ <b>현재 모델은 부산 CCTV(240p)에서 실사용 수준이 아닙니다</b>
+      (2026-08-13 시험). 탐지가 나와도 <b>차선 도색을 균열로 읽은 오탐</b>일 수 있고,
+      <b>0건이 「손상 없음」을 뜻하지도 않습니다.</b> 지금은 점검할 지점을 좁히는
+      참고 자료로만 쓰고, 반드시 육안 확인을 병행하십시오.</p>
+
+    <!-- 실제 AI 탐지 실행 -- 기존 영상 / 실시간 CCTV 선택 -->
+    <div id="road-analysis" class="road-analysis"></div>
+  </section>
+</div>
 
 <!-- 실시간 CCTV 모달 -- ROI 오버레이 포함 (flood3 원본에는 없던 추가 기능) -->
 <div id="livemodal" class="modal hidden">
@@ -59,9 +142,11 @@
       <svg id="liveroi" class="roi-overlay" preserveAspectRatio="none"></svg>
     </div>
     <div class="roi-legend">
-      <span><i style="background:#3fb950"></i>도로 ROI</span>
-      <span><i style="background:#e5484d"></i>저지대 ROI</span>
-      <span><i style="background:#58a6ff"></i>차선 기준선</span>
+      {# 2026-08-26 — 도메인마다 도형 종류가 다르므로(침수: 도로 ROI 등,
+         교통위험: 정체 감시 구역 등, 노면: 분석 구간) 정적으로 3개를 박아
+         두지 않고 loadRoiOverlay()가 실제로 그린 도형만 나열한다
+         (app.js의 loadRoiOverlayInto 참고). #}
+      <span id="roi-legend-items"></span>
       <span id="roi-note" class="roi-note"></span>
     </div>
     <div class="livectrl">
@@ -82,8 +167,32 @@
   </div>
 </div>
 
-<script>window.INITIAL_BLOCKS = {{ blocks | tojson }};</script>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
-<script src="/static/app.js"></script>
-</body>
-</html>
+<!-- 도로 노면 관리 -- mock 데이터 원본 확인용 (Phase 1/2, docs/road_surface_management_plan.md 참고) -->
+<div id="mockdatamodal" class="modal hidden">
+  <div class="modalbox">
+    <div class="modalhead"><span id="mockdatatitle">Mock 데이터</span>
+      <button onclick="closeMockData()">✕ 닫기</button></div>
+    <p class="mock-hint">⚠ 아래는 화면에 표시되는 값을 만들어낸 <b>원본 mock 데이터</b>입니다(API 응답 그대로) — 실제 AI 탐지 결과가 아닙니다.</p>
+    <pre id="mockdatabody" class="reportmd"></pre>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>window.INITIAL_BLOCKS = {{ blocks | tojson }};
+// 화면 정렬 (설정 → 기관 정보·화면 S-85). 「고정」이면 값이 바뀌어도 카드
+// 자리가 그대로다 — 관제 중 읽던 지점을 놓치지 않게 한다.
+window.UG_CARD_ORDER = {{ card_order | tojson }};
+window.UG_OBJECT_ORDER = {{ object_order | tojson }};
+// 메뉴에서 진입한 경로에 따라 초기 탭을 정한다 (v4 IA — 도메인별 심층 분석).
+window.INITIAL_TAB = {{ (initial_tab or "flood") | tojson }};</script>
+{# ⚠️ hls.js 를 **우리 서버에서** 내보낸다.
+   2026-08-19 이전에는 cdn.jsdelivr.net 에서 받아 왔는데, 폐쇄망 관제실에서는
+   그 요청이 실패한다. 이 <script> 는 순서대로 실행되는 방식이라 실패를
+   기다리는 동안 **아래 app.js 가 멈추고, 화면 전체가 비어 있는다.**
+   경남 제안요청서 PER-009 「외부 인터넷 연결이 필수적으로 요구되지 않는 구조」
+   위반이기도 하다. 출처·라이선스는 static/vendor/README.md 참고. #}
+<script src="/static/vendor/hls.min.js"></script>
+<script src="/static/app.js?v={{ app_js_version }}"></script>
+{% endblock %}

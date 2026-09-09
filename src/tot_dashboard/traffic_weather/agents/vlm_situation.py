@@ -12,16 +12,23 @@ mechanics are the same pattern.
 If the API key / ``google-genai`` / image are not all available, or the call
 fails, falls back to a deterministic rule-based description — the pipeline
 always produces *something*.
+
+★ 2026-08-26 — 전송 계층(키 조회·JPEG 인코딩·타임아웃·JSON 추출)은
+``common/vlm.py``로 옮겼다(Phase 6-A). 이 파일에는 프롬프트와 규칙 기반
+폴백만 남긴다 — 그 둘은 도메인 고유라 공용화하지 않는다.
+``TOT_VLM_BACKEND=openai_compatible``로 두면 클라우드 Gemini 대신 관제망
+**내부**의 OpenAI 호환 서버(vLLM·Ollama 등)를 부른다 — ``common/vlm.py``
+머리말 참고.
 """
 from __future__ import annotations
 
-import io
 import json
-import os
+import logging
 
+from ...common import vlm as VLM
 from ...models import TrafficState, WeatherIntensity
 
-KEY_NAMES = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
+log = logging.getLogger("urbanguard.traffic.vlm_situation")
 
 VLM_SYS_PROMPT = """당신은 도심 교통·재난 통합관제센터의 도로상황 분석 AI다.
 도로 CCTV 정지영상과 정량지표(차량수·평균속도·속도감소율·정체대기열·정지차량·강수량)를
@@ -60,48 +67,6 @@ REPORT_SYS_PROMPT = """당신은 도심 교통·재난 통합관제센터의 상
  - 마크다운 머리말·목록 없이 '문단 텍스트'만 출력한다."""
 
 
-def _get_key() -> str | None:
-    for n in KEY_NAMES:
-        if os.environ.get(n):
-            return os.environ[n]
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-        for n in KEY_NAMES:
-            if os.environ.get(n):
-                return os.environ[n]
-    except Exception:  # noqa: BLE001
-        pass
-    return None
-
-
-def _to_jpeg_bytes(image, max_side: int = 768) -> bytes | None:
-    """PIL.Image or JPEG bytes -> JPEG bytes."""
-    if image is None:
-        return None
-    if isinstance(image, (bytes, bytearray)):
-        return bytes(image)
-    try:
-        im = image.copy()
-        im.thumbnail((max_side, max_side))
-        buf = io.BytesIO()
-        im.convert("RGB").save(buf, format="JPEG", quality=80)
-        return buf.getvalue()
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def _extract_json(text) -> str:
-    """Strip a ```json code fence / stray text, keep only the {...} span."""
-    raw = (text or "").strip()
-    if raw.startswith("```"):
-        raw = raw.strip("`").strip()
-        if raw[:4].lower() == "json":
-            raw = raw[4:].strip()
-    s, e = raw.find("{"), raw.rfind("}")
-    return raw[s:e + 1] if (s != -1 and e > s) else raw
-
-
 class VlmSituationAgent:
     def __init__(self, use_vlm: bool = False, model: str = "gemini-2.5-flash",
                  location: str = "도심 블록"):
@@ -112,22 +77,21 @@ class VlmSituationAgent:
 
     def interpret(self, image, traffic, weather, location: str | None = None) -> dict:
         if self.use_vlm:
-            data = self._gemini(image, traffic, weather, location or self.location)
+            data = self._call_vlm(image, traffic, weather, location or self.location)
             if data is not None:
-                self.last_source = "gemini-vlm"
+                # ★ 2026-08-26 — 백엔드에 따라 출처를 다르게 남긴다.
+                #   "gemini-vlm"은 기존 값 그대로 유지(하위호환·회귀 방지),
+                #   사내 서버는 새 값으로 구분해 화면에서 실제로 어느
+                #   쪽을 탔는지 알 수 있게 한다.
+                self.last_source = ("gemini-vlm" if VLM.backend() == "gemini"
+                                    else "vlm-openai_compatible")
                 return data
         self.last_source = "rule-fallback"
         return self._fallback(traffic, weather)
 
-    def _gemini(self, image, traffic, weather, location) -> dict | None:
-        jpeg = _to_jpeg_bytes(image)
-        key = _get_key()
-        if jpeg is None or key is None:
-            return None
-        try:
-            from google import genai
-            from google.genai import types as gt
-        except ImportError:
+    def _call_vlm(self, image, traffic, weather, location) -> dict | None:
+        jpeg = VLM.to_jpeg_bytes(image)
+        if jpeg is None:
             return None
         user_text = (
             f"[구역] {location} 도로 CCTV\n"
@@ -138,26 +102,16 @@ class VlmSituationAgent:
             f"강수량={weather.rain_mm_h:.0f}mm/h({weather.intensity.value})\n"
             f"위 장면과 지표로 도로 상황 해석을 JSON으로 생성하라."
         )
-        try:
-            client = genai.Client(api_key=key)
-            cfg = dict(system_instruction=VLM_SYS_PROMPT, max_output_tokens=1024,
-                       temperature=0.2, response_mime_type="application/json")
-            try:
-                # gemini-2.5-flash is a thinking model; unbounded thinking tokens
-                # can crowd out the output so JSON gets truncated. Disable it.
-                cfg["thinking_config"] = gt.ThinkingConfig(thinking_budget=0)
-            except Exception:  # noqa: BLE001
-                cfg["max_output_tokens"] = 2048  # older SDK: leave thinking-token headroom
-            resp = client.models.generate_content(
-                model=self.model,
-                contents=[gt.Part.from_bytes(data=jpeg, mime_type="image/jpeg"), user_text],
-                config=gt.GenerateContentConfig(**cfg))
-            data = json.loads(_extract_json(resp.text))
-            data["source"] = "gemini-vlm"
-            return data
-        except Exception as e:  # noqa: BLE001
-            print(f"  (Gemini call failed -> rule fallback): {str(e)[:140]}")
+        text = VLM.call_vlm(VLM_SYS_PROMPT, user_text, jpeg, model=self.model)
+        if text is None:
             return None
+        try:
+            data = json.loads(VLM.extract_json(text))
+        except Exception as e:  # noqa: BLE001
+            log.warning("VLM 응답 JSON 파싱 실패 -> 규칙 폴백: %s", str(e)[:140])
+            return None
+        data["source"] = "gemini-vlm" if VLM.backend() == "gemini" else "vlm-openai_compatible"
+        return data
 
     def narrate_report(self, facts: dict, image=None) -> str | None:
         """Generate only the briefing's "종합 판단" narrative paragraph from
@@ -165,14 +119,6 @@ class VlmSituationAgent:
         never touched here). Returns None on missing key/module/failure so the
         caller falls back to a rule-based sentence."""
         if not self.use_vlm:
-            return None
-        key = _get_key()
-        if key is None:
-            return None
-        try:
-            from google import genai
-            from google.genai import types as gt
-        except ImportError:
             return None
         facts_text = (
             f"[위치] {facts.get('location')}\n"
@@ -188,26 +134,10 @@ class VlmSituationAgent:
             f"[권고(고정)] {facts.get('recommendation')}\n"
             f"위 확정 사실만으로 '종합 판단' 서술을 작성하라(문단 텍스트만)."
         )
-        parts = []
-        jpeg = _to_jpeg_bytes(image)
-        if jpeg is not None:
-            parts.append(gt.Part.from_bytes(data=jpeg, mime_type="image/jpeg"))
-        parts.append(facts_text)
-        try:
-            client = genai.Client(api_key=key)
-            cfg = dict(system_instruction=REPORT_SYS_PROMPT, max_output_tokens=800,
-                       temperature=0.3)
-            try:
-                cfg["thinking_config"] = gt.ThinkingConfig(thinking_budget=0)
-            except Exception:  # noqa: BLE001
-                cfg["max_output_tokens"] = 1600
-            resp = client.models.generate_content(
-                model=self.model, contents=parts,
-                config=gt.GenerateContentConfig(**cfg))
-            return (resp.text or "").strip() or None
-        except Exception as e:  # noqa: BLE001
-            print(f"  (report narrative Gemini call failed -> rule sentence): {str(e)[:140]}")
-            return None
+        jpeg = VLM.to_jpeg_bytes(image)
+        text = VLM.call_vlm(REPORT_SYS_PROMPT, facts_text, jpeg, model=self.model,
+                            temperature=0.3, max_output_tokens=800, json_mode=False)
+        return (text or "").strip() or None
 
     def _fallback(self, traffic, weather) -> dict:
         raining = weather.intensity != WeatherIntensity.none

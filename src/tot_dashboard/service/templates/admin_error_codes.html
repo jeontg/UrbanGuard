@@ -1,0 +1,230 @@
+{# S-93 오류 코드 사전 — 코드마다 원인과 해결방법을 적어 두는 표.
+
+   이 화면이 하는 일
+     발생 이력(S-92)은 「무슨 일이 났나」를 보여 주고, 여기는 「그게 무슨 뜻이고
+     무엇을 하면 되나」를 기른다. 담당자가 현장에서 알아낸 조치 방법을 여기 적어
+     두면, 다음에 같은 오류를 만난 사람이 이력 화면에서 바로 그 설명을 본다.
+
+   기본 제공 코드
+     제품이 심어 둔 코드는 삭제할 수 없다. 지워도 그 코드로 오류는 계속 쌓이고
+     설명만 사라지기 때문이다. 목록에서 감추려면 「사용 안 함」으로 바꾼다. #}
+{% extends "_layout.html" %}
+{% block title %}오류 코드 사전 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>오류 코드 사전</h2>
+  <p>오류 코드별 원인과 해결방법입니다. 여기 적어 둔 내용이
+    <a href="/admin/errors" style="color:inherit">오류 관리 (S-92)</a> 목록에
+    그대로 표시됩니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+<!-- 등록 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>코드 등록 · 수정</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:0 0 12px">
+    이미 있는 코드를 입력하면 그 코드의 내용을 덮어씁니다. 아래 목록의
+    「수정」을 누르면 이 폼에 값이 채워집니다.</p>
+  <form method="post" action="/admin/error-codes/save" id="code-form">
+    <div class="ug-cards" style="--ug-gap:12px">
+      <div class="ug-field"><label for="c-code">코드</label>
+        <input id="c-code" name="code" required autocomplete="off"
+               placeholder="UG-CCTV-006" value="{{ form.get('code', '') }}"
+               pattern="[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9]+){1,3}"
+               title="영문·숫자와 하이픈으로 이루어진 코드 (예: UG-CCTV-006)"></div>
+      <div class="ug-field"><label for="c-cat">분류</label>
+        <select id="c-cat" name="category" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          {% for v, l in categories.items() %}
+          <option value="{{ v }}"
+            {% if form.get('category') == v %}selected{% endif %}>{{ l }} ({{ v }})</option>
+          {% endfor %}
+        </select></div>
+      <div class="ug-field"><label for="c-sev">심각도</label>
+        <select id="c-sev" name="severity" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          {% for v, l in severities.items() %}
+          <option value="{{ v }}"
+            {% if form.get('severity', 'error') == v %}selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="ug-field"><label for="c-act">사용 여부</label>
+        <select id="c-act" name="is_active" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          <option value="1" {% if form.get('is_active', '1') == '1' %}selected{% endif %}
+            >사용</option>
+          <option value="0" {% if form.get('is_active') == '0' %}selected{% endif %}
+            >사용 안 함 (목록에서 감춤)</option>
+        </select></div>
+    </div>
+    <div class="ug-field"><label for="c-title">오류명</label>
+      <input id="c-title" name="title" required autocomplete="off"
+             placeholder="한 줄로 무엇이 잘못됐는지"
+             value="{{ form.get('title', '') }}"></div>
+    <div class="ug-field"><label for="c-cause">원인</label>
+      <textarea id="c-cause" name="cause" rows="3"
+                placeholder="왜 이 오류가 나는지. 운영자가 읽을 말로 적습니다."
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px;font:inherit">{{ form.get('cause', '') }}</textarea></div>
+    <div class="ug-field"><label for="c-res">해결방법</label>
+      <textarea id="c-res" name="resolution" rows="4"
+                placeholder="① 먼저 무엇을 확인하고 ② 그다음 무엇을 하는지 순서대로."
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px;font:inherit">{{ form.get('resolution', '') }}</textarea></div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:10px 20px">저장</button>
+  </form>
+</div>
+
+<!-- 검색 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <form method="get" action="/admin/error-codes"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:200px;flex:2 1 240px">
+      <label for="f-q">검색어</label>
+      <input id="f-q" name="q" value="{{ filt.q }}"
+             placeholder="코드·오류명·원인·해결방법 일부">
+    </div>
+    <div class="ug-field" style="margin:0;min-width:150px;flex:1 1 150px">
+      <label for="f-cat">분류</label>
+      <select id="f-cat" name="category" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in categories.items() %}
+        <option value="{{ v }}" {% if filt.category == v %}selected{% endif %}>
+          {{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+    <a class="ug-btn ug-btn--ghost" href="/admin/error-codes"
+       style="width:auto;padding:11px 18px;text-decoration:none;text-align:center">
+      조건 해제</a>
+  </form>
+</div>
+
+<!-- 목록 -->
+<div class="ug-card">
+  <h3>등록된 코드 ({{ rows|length }}건)</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>코드</th><th>분류</th><th>심각도</th><th>오류명 / 원인 / 해결방법</th>
+        <th style="text-align:right">최근 30일</th><th>구분</th><th>관리</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr{% if not r.is_active %} style="opacity:.55"{% endif %}>
+        <td style="white-space:nowrap"><code>{{ r.code }}</code></td>
+        <td style="white-space:nowrap">{{ categories.get(r.category, r.category) }}</td>
+        <td>
+          {% if r.severity == "critical" %}
+            <span class="ug-badge ug-badge--crit">심각</span>
+          {% elif r.severity == "error" %}
+            <span class="ug-badge ug-badge--warn">오류</span>
+          {% elif r.severity == "warn" %}
+            <span class="ug-badge ug-badge--off">주의</span>
+          {% else %}
+            <span class="ug-badge ug-badge--off">정보</span>
+          {% endif %}
+        </td>
+        <td style="white-space:normal;max-width:560px">
+          <details>
+            <summary style="cursor:pointer"><b>{{ r.title }}</b>
+              {% if not r.is_active %}
+              <span class="ug-badge ug-badge--off" style="margin-left:6px">사용 안 함</span>
+              {% endif %}
+            </summary>
+            <div style="margin:10px 0 4px;font-size:.86rem;line-height:1.55">
+              <p style="margin:0 0 4px"><b>원인</b></p>
+              <p style="margin:0 0 10px;color:var(--muted);white-space:pre-wrap"
+                >{{ r.cause or "—" }}</p>
+              <p style="margin:0 0 4px"><b>해결방법</b></p>
+              <p style="margin:0;color:var(--muted);white-space:pre-wrap"
+                >{{ r.resolution or "—" }}</p>
+              {% if r.updated_by %}
+              <p style="margin:10px 0 0;font-size:.78rem;color:var(--muted)">
+                최근 수정 {{ r.updated_at.strftime("%Y-%m-%d %H:%M") }} · {{ r.updated_by }}</p>
+              {% endif %}
+            </div>
+          </details>
+        </td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums">
+          {% set n = usage.get(r.code, 0) %}
+          {% if n %}<a href="/admin/errors?code={{ r.code }}"
+                       style="color:var(--text)">{{ n }}회</a>
+          {% else %}<span style="color:var(--muted)">—</span>{% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          {% if r.builtin %}<span class="ug-badge ug-badge--off">기본</span>
+          {% else %}<span class="ug-badge ug-badge--on">직접 등록</span>{% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          <button class="ug-btn ug-btn--ghost" type="button"
+                  style="width:auto;padding:6px 12px;font-size:.8rem"
+                  data-edit="{{ r.code }}"
+                  data-cat="{{ r.category }}" data-sev="{{ r.severity }}"
+                  data-active="{{ '1' if r.is_active else '0' }}"
+                  data-title="{{ r.title }}"
+                  data-cause="{{ r.cause }}"
+                  data-res="{{ r.resolution }}">수정</button>
+          {% if not r.builtin %}
+          <form method="post" action="/admin/error-codes/delete"
+                style="display:inline"
+                onsubmit="return confirm('{{ r.code }} 를 사전에서 삭제합니다. 이 코드로 쌓인 오류 이력은 남지만 원인·해결방법은 표시되지 않습니다. 진행할까요?')">
+            <input type="hidden" name="code" value="{{ r.code }}">
+            <button class="ug-btn ug-btn--ghost" type="submit"
+                    style="width:auto;padding:6px 12px;font-size:.8rem;
+                           color:#ff9a9c">삭제</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="ug-empty">
+        {% if filt.q or filt.category %}조건에 맞는 코드가 없습니다.
+        {% else %}등록된 코드가 없습니다.{% endif %}
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<p class="ug-note">「기본」 코드는 제품이 제공하는 것이라 삭제할 수 없습니다 —
+  지워도 그 코드로 오류는 계속 쌓이고 설명만 사라지기 때문입니다. 목록에서
+  감추려면 「사용 안 함」으로 바꾸십시오. 내용은 자유롭게 고칠 수 있으며,
+  다시 배포해도 고친 내용이 유지됩니다.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 「수정」을 누르면 위 등록 폼에 값을 채운다. 화면을 옮기지 않고 그 자리에서
+// 고칠 수 있어야, 원인·해결방법을 실제로 채워 넣게 된다.
+(function () {
+  var form = document.getElementById('code-form');
+  if (!form) { return; }
+  document.querySelectorAll('button[data-edit]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      form.code.value = btn.dataset.edit;
+      form.category.value = btn.dataset.cat;
+      form.severity.value = btn.dataset.sev;
+      form.is_active.value = btn.dataset.active;
+      form.title.value = btn.dataset.title;
+      form.cause.value = btn.dataset.cause;
+      form.resolution.value = btn.dataset.res;
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      form.title.focus();
+    });
+  });
+})();
+</script>
+{% endblock %}

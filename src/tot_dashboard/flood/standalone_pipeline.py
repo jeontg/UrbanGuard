@@ -27,13 +27,14 @@ import numpy as np
 
 from ..common.models_loader import ModelBundle, load_models
 from ..common.roi import RoiConfig, load_roi_config, point_in_polygons, water_crosses_line
-from ..common.video_io import iter_source, source_name
+from ..common.video_io import detect_letterbox, get_preview_frame, iter_source, source_name
 from ..models import TrafficState
 from . import visualization as viz
 from .alert_engine import AlertEngine
 from .config import load_alert_config, load_model_config, load_risk_config
 from .metrics_core import (
     FloodMetrics,
+    StandaloneFloodMetrics,
     RoiMaskCache,
     ExpansionRateTracker,
     count_points_on_mask,
@@ -80,12 +81,20 @@ class StandaloneMetricsEngine:
         detection: DetectionResult,
         frame_number: int,
         timestamp_sec: float,
-    ) -> FloodMetrics:
+    ) -> StandaloneFloodMetrics:
         h, w = water.mask.shape[:2]
         self.roi_cache.ensure(h, w)
-        roi = self.roi_cache.roi
+        # ⚠️ 2026-08-23 — flood_metrics_engine.py 와 같은 이유로 `scaled`
+        # (이 프레임 해상도로 보정된 사본)를 써야 한다. 원본(`roi_cache.roi`)
+        # 을 쓰면 저장 해상도와 실제 처리 해상도가 다를 때 lane_threshold_line
+        # ·low_point_roi 판정만 road/low 마스크와 어긋나게 된다.
+        roi = self.roi_cache.scaled
 
-        m = FloodMetrics(frame_number=frame_number, timestamp_sec=float(timestamp_sec))
+        # ★ 2026-08-21: 이 파이프라인(S-23, 오프라인 자립형 분석)만
+        #   StandaloneFloodMetrics를 쓴다 — traffic_state/
+        #   stopped_vehicles_near_water는 여기서만 유효하고, 실시간 경로
+        #   (FloodMetricsEngine)는 순수 FloodMetrics만 다룬다.
+        m = StandaloneFloodMetrics(frame_number=frame_number, timestamp_sec=float(timestamp_sec))
         m.roi_defined = roi.has_road
 
         if self.roi_cache.road_mask is not None:
@@ -293,11 +302,47 @@ class Pipeline:
                            risk=risk, prediction=prediction)
 
 
+def _resolve_letterbox_crop(pipeline: "Pipeline", source: dict[str, Any],
+                            mode: str) -> tuple[int, int, int, int] | None:
+    """레터박스 크롭 박스를 결정한다. 크롭하지 않으면 None.
+
+    왜 필요한가: 물 세그멘테이션 모델은 레터박스(검은 여백) 영상을 학습한 적이
+    없어 **검은 띠를 물로 오인**한다(실측 - 기존 Ultralytics 모델 19%, 신규
+    torchvision 모델 17.9% 오탐. docs/flood_water_dataset_workflow.md 3-B절).
+
+    ⚠️ ROI와의 충돌: ROI 좌표는 ``scripts/roi_editor.py``가 **원본(크롭 전)**
+    프레임에서 찍은 것이라, 크롭하면 좌표가 어긋난다. 따라서 ``auto`` 모드에서는
+    도로 ROI가 설정된 경우 크롭하지 않는다.
+    """
+    if mode == "off":
+        return None
+    frame = get_preview_frame(source)
+    if frame is None:
+        return None
+    h, w = frame.shape[:2]
+    t, b, l, r = detect_letterbox(frame)
+    if (t, b, l, r) == (0, h, 0, w):
+        return None                                  # 여백 없음
+
+    if mode == "auto" and pipeline.roi.has_road:
+        print(f"[flood] 경고: 레터박스 감지(좌{l} 우{w - r} 상{t} 하{h - b}px)됐으나 "
+              "도로 ROI가 설정돼 있어 크롭하지 않습니다 "
+              "(ROI 좌표가 원본 기준이라 어긋남). 검은 여백이 물로 오탐될 수 있습니다.")
+        print("[flood]   해결: 크롭된 프레임으로 ROI를 다시 지정하거나 "
+              "--crop-letterbox on 으로 강제 크롭하세요.")
+        return None
+
+    print(f"[flood] 레터박스 크롭 적용: 좌{l} 우{w - r} 상{t} 하{h - b}px")
+    return t, b, l, r
+
+
 def process_run(
     pipeline: Pipeline,
     source: dict[str, Any],
     save: bool = False,
     writer_factory=None,
+    process_every_seconds: float | None = None,
+    crop_letterbox: str = "auto",
 ) -> Iterator[tuple[FrameResult, Any]]:
     """Generator: process every sampled frame, yield (FrameResult, writer).
 
@@ -308,9 +353,20 @@ def process_run(
     ``common.case_archive.run_writer.RunWriter`` plugs in without this module
     needing to import the archive package (dependency inversion — Phase 2 has
     no archive dependency).
+
+    ``process_every_seconds``, if given, overrides ``pipeline.mcfg``'s
+    ``process_every_seconds`` (e.g. so the CLI's ``--every`` flag actually
+    takes effect instead of being silently ignored in favor of the model
+    config default).
+
+    ``crop_letterbox``: ``auto``(기본) | ``on`` | ``off``. 검은 여백을 물로
+    오인하는 문제를 막기 위한 전처리 — :func:`_resolve_letterbox_crop` 참고.
     """
     pipeline.reset_state()
-    every = float(pipeline.mcfg.get("process_every_seconds", 1))
+    every = (
+        float(process_every_seconds) if process_every_seconds is not None
+        else float(pipeline.mcfg.get("process_every_seconds", 1))
+    )
 
     writer = None
     if save and writer_factory is not None:
@@ -332,7 +388,11 @@ def process_run(
             video_fps=max(1.0, 1.0 / every if every else 1.0),
         )
 
+    box = _resolve_letterbox_crop(pipeline, source, crop_letterbox)
     for frame_number, ts, frame in iter_source(source, every):
+        if box is not None:
+            t, b, l, r = box
+            frame = frame[t:b, l:r]
         result = pipeline.process_frame(frame, frame_number, ts)
         if writer is not None:
             writer.add(result.metrics, result.annotated_bgr(pipeline.roi))
@@ -374,6 +434,10 @@ def main() -> None:
     ap.add_argument("--no-archive", action="store_true",
                     help="don't save annotated frames/video/CSV under data/runs/ -- "
                          "just print per-frame numbers")
+    ap.add_argument("--crop-letterbox", choices=["auto", "on", "off"], default="auto",
+                    help="검은 여백(레터박스) 자동 제거. 여백을 그대로 두면 모델이 물로 "
+                         "오인한다. auto=여백이 있고 도로 ROI가 없을 때만 크롭(ROI 좌표는 "
+                         "원본 기준이라 크롭 시 어긋남), on=항상, off=안 함")
     args = ap.parse_args()
 
     roi = load_roi_config(args.roi) if args.roi else RoiConfig()
@@ -383,7 +447,9 @@ def main() -> None:
     save = not args.no_archive
     writer = None
     for result, writer in process_run(pipeline, source, save=save,
-                                      writer_factory=RunWriter if save else None):
+                                      writer_factory=RunWriter if save else None,
+                                      process_every_seconds=args.every,
+                                      crop_letterbox=args.crop_letterbox):
         print(
             f"frame={result.frame_number} t={result.timestamp_sec:.1f}s "
             f"water_ratio={result.metrics.water_area_ratio:.4f} "

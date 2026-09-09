@@ -23,12 +23,16 @@ renders the synthetic scene instead).
 """
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Iterator, Protocol
 
+from ...common import stream_guard
 from ...common.models_loader import select_class_ids
 from ...models import Detection
+
+log = logging.getLogger("urbanguard.detection_source")
 
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle"}
 PERSON_CLASSES = {"person"}
@@ -148,6 +152,10 @@ class YoloDetectionSource:
         target_ids = select_class_ids(self._model, wanted_names)
         names = dict(self._model.names)
         self._target_id_to_name: dict[int, str] = {cid: names[cid] for cid in target_ids}
+        if not stream_guard.host_reachable(video_path):
+            # 기동 시점에 망이 끊겨 있으면 여기서 걸러 낸다. 호출부는 합성
+            # 소스로 내려가고, 나중에 망이 살아나면 다시 붙는다.
+            raise RuntimeError(f"호스트 이름이 풀리지 않습니다: {video_path}")
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             cap.release()
@@ -160,7 +168,18 @@ class YoloDetectionSource:
     def frames(self) -> Iterator[Frame]:
         cv2 = self._cv2
         target_ids = list(self._target_id_to_name)
+        backoff = stream_guard.Backoff()
         while True:
+            # ⚠️ 호스트가 풀리지 않으면 **FFmpeg 를 부르지 않는다.**
+            # 2026-08-12 밤 DNS 장애 때 8개 스레드가 1초마다 재접속하면서
+            # FFmpeg 컨텍스트를 초당 8개씩 만들었고, 몇 시간 뒤 프로세스가
+            # 세그폴트로 죽었다. 네이티브 경로에 들어가지 않으면 그 방아쇠가
+            # 사라진다.
+            if not stream_guard.host_reachable(self.video_path):
+                if not self.loop:
+                    break
+                backoff.sleep()
+                continue
             cap = cv2.VideoCapture(self.video_path)
             try:
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # live: always the newest frame
@@ -189,8 +208,17 @@ class YoloDetectionSource:
             cap.release()
             if not self.loop:  # not looping (one-shot file) -> stop
                 break
-            if not produced:
+            if produced:
+                # 잠깐 끊겼다 돌아온 스트림을 1분씩 기다리게 하면 안 된다.
+                backoff.success()
+            else:
                 # connected but never got a frame (stream briefly degraded). Reconnect
                 # rather than giving up (this used to raise StopIteration and
                 # permanently fall back to synthetic).
-                time.sleep(1.0)  # avoid reconnect spam
+                # 간격을 지수적으로 늘린다 — 끊긴 스트림에 1초마다 달려드는 것은
+                # 복구에 도움이 되지 않으면서 자원만 태운다(위 세그폴트의 원인).
+                wait = backoff.delay
+                if backoff.failures in (0, 4, 10) or backoff.failures % 30 == 0:
+                    log.warning("스트림 재접속 실패 %d회 — %.0f초 뒤 재시도: %s",
+                                backoff.failures + 1, wait, self.video_path)
+                backoff.sleep()

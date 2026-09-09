@@ -21,7 +21,6 @@ from typing import Any
 
 import numpy as np
 
-from ..models import TrafficState
 from .metrics_core import FloodMetrics
 
 GRADE_KR = {1: "매우 낮음", 2: "낮음", 3: "보통", 4: "높음", 5: "매우 높음"}
@@ -32,11 +31,10 @@ TREND_KR = {
 COMPONENT_KR = {
     "area": "도로 침수 면적",
     "low_point": "저지대 침수",
-    "lane": "차선 기준선 침범",
+    "lane": "침수 경계선 침범",
     "expansion": "확산 속도",
     "tire": "차량 바퀴 침수",
     "person": "보행자 위험",
-    "traffic": "정체·정지 차량",
 }
 THRESHOLD_KR = {"caution": "주의", "danger": "위험", "shutdown": "통제"}
 
@@ -72,9 +70,13 @@ class RiskEngine:
                  alert_config: dict[str, Any] | None = None) -> None:
         rc = risk_config or {}
         ac = alert_config or rc
+        # ⚠️ 2026-08-21 flood/traffic 도메인 분리 — "traffic"(정체·정지 차량,
+        # 6%) 가중치를 제거했다. 나머지 6개 요소의 비율은 그대로 두고
+        # (0.28/0.24/0.10/0.10/0.12/0.10 그대로), score()의 wsum 정규화가
+        # 이 6개만으로 자동 재정규화한다 — 상대 비율이 보존된다.
         self.weights = dict(rc.get("weights", {
             "area": 0.28, "low_point": 0.24, "lane": 0.10, "expansion": 0.10,
-            "tire": 0.12, "person": 0.10, "traffic": 0.06,
+            "tire": 0.12, "person": 0.10,
         }))
         self.expansion_ref = float(rc.get("expansion_ref", 0.05))
         self.person_floor = float(rc.get("person_danger_floor", 85.0))
@@ -87,17 +89,15 @@ class RiskEngine:
         self.ratio_shutdown = float(ac.get("ratio_shutdown", 0.35))
 
     def _raw_components(self, m: FloodMetrics) -> dict[str, float]:
+        """★ 2026-08-21: 순수 침수 6요소만 계산한다 — "traffic"(정체·정지
+        차량) 성분을 제거했다. `FloodMetrics`에서 `traffic_state`/
+        `stopped_vehicles_near_water` 필드 자체가 없어졌으므로 여기서
+        참조할 수도 없다(교통 도메인 분리, docs/202608210801 참고)."""
         ratio = m.water_area_ratio
         area = ratio / self.ratio_shutdown if self.ratio_shutdown > 0 else ratio
         tire = min(1.0, m.max_vehicle_submersion * 1.5)
         if m.vehicles_tire_in_water > 0:
             tire = max(tire, 0.4)
-        traffic = 0.0
-        if m.stopped_vehicles_near_water > 0:
-            traffic = 1.0
-        elif m.traffic_state in (TrafficState.blocked, TrafficState.congested) \
-                and ratio >= self.ratio_watch:
-            traffic = 0.5
         return {
             "area": _clamp(area),
             "low_point": _clamp(m.low_point_water_ratio),
@@ -106,7 +106,6 @@ class RiskEngine:
             if self.expansion_ref > 0 else 0.0,
             "tire": _clamp(tire),
             "person": 1.0 if m.persons_in_danger > 0 else 0.0,
-            "traffic": _clamp(traffic),
         }
 
     def grade_of(self, score: float) -> int:

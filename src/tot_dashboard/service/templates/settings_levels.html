@@ -1,0 +1,428 @@
+{% extends "_layout.html" %}
+{% block title %}위험등급 관리 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>위험등급 관리</h2>
+  <p>위험등급의 <b>이름·색</b>과 도메인별 <b>구간</b>을 기관 기준에 맞게 고칩니다.
+    코드에 박혀 있던 값을 표로 뺀 자리입니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if errors %}
+<p class="ug-error" role="alert">
+  {% for e in errors %}{{ e }}<br>{% endfor %}
+</p>
+{% endif %}
+
+<section class="ug-card" style="margin-bottom:16px">
+  <h3>등급 이름과 색</h3>
+  <p class="ug-note">
+    ⚠ <b>코드와 순서는 바꿀 수 없습니다.</b> 다른 표가 코드를 참조하고, 순서는
+    등급 비교의 유일한 기준입니다. 기관이 「심각」을 「위험」이라 불러도
+    <b>판정은 그대로 맞습니다</b>.
+  </p>
+  <form method="post" action="/settings/levels/label">
+    <table class="ug-table">
+      <thead><tr>
+        <th style="width:70px">순서</th><th style="width:110px">코드</th>
+        <th>화면에 쓸 이름</th><th style="width:130px">색</th>
+        <th style="width:120px">단독 발송</th>
+      </tr></thead>
+      <tbody>
+        {% for lv in levels %}
+        <tr>
+          <td>{{ lv.seq }}</td>
+          <td><code>{{ lv.code }}</code></td>
+          <td><input name="label_{{ lv.code }}" value="{{ lv.label }}"
+                     style="width:100%;padding:8px;background:var(--bg);
+                            color:var(--text);border:1px solid var(--border);
+                            border-radius:6px"></td>
+          <td><input name="color_{{ lv.code }}" value="{{ lv.color }}"
+                     placeholder="#c92a2a"
+                     style="width:100%;padding:8px;background:var(--bg);
+                            color:var(--text);border:1px solid var(--border);
+                            border-radius:6px"></td>
+          <td>{% if lv.is_critical %}<b>허용</b>{% else %}
+              <span style="color:var(--muted)">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 22px;margin-top:12px">저장</button>
+  </form>
+  <p class="ug-note">
+    ⚠ 이름을 바꿔도 <b>지난 이벤트에 저장된 등급 문자열은 그대로 남습니다</b> —
+    그때 그렇게 판정했다는 기록이라 바꾸지 않습니다.
+  </p>
+</section>
+
+<section class="ug-card">
+  <h3>등급 구간</h3>
+  <p class="ug-note">
+    값이 <b>이상</b>이면 그 등급입니다. 가장 낮은 등급은 구간이 없습니다 —
+    <b>어느 기준에도 못 미치면 그것</b>입니다.
+  </p>
+  <form method="post" action="/settings/levels/threshold">
+    {% for key, label, unit, rows in domains %}
+    <h4 style="margin:18px 0 6px">{{ label }}
+      <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+        {{ unit }}</span></h4>
+    <table class="ug-table">
+      <thead><tr>
+        <th style="width:110px">등급</th><th style="width:160px">기준값 이상</th>
+        <th>근거</th>
+      </tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><b style="color:{{ r.color or 'inherit' }}">{{ r.label }}</b></td>
+          <td><input name="min_{{ r.id }}" value="{{ r.min_value }}"
+                     inputmode="decimal"
+                     style="width:100%;padding:8px;background:var(--bg);
+                            color:var(--text);border:1px solid var(--border);
+                            border-radius:6px"></td>
+          <td style="font-size:.82rem;color:var(--muted)">{{ r.source_note }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endfor %}
+
+    {# ★ 노면은 **성격이 다르다.** 위 표와 같은 폼에 두어 한 번에 저장하되,
+       시각적으로 확실히 갈라 놓는다. 나란히 두면 침수 「심각」과 노면
+       「긴급」이 같은 척도로 읽힌다. #}
+    {% if maint_domains %}
+    <div style="margin:26px 0 0;padding:16px;border-radius:10px;
+                border:1px dashed var(--border);
+                background:rgba(127,127,127,.06)">
+      <h4 style="margin:0 0 4px;display:flex;align-items:center;gap:8px;
+                 flex-wrap:wrap">
+        🛠 정비 등급
+        <span style="font-weight:400;font-size:.8rem;padding:2px 8px;
+                     border-radius:999px;background:rgba(127,127,127,.18);
+                     color:var(--muted)">위험등급 아님</span>
+      </h4>
+
+      <p class="ug-note" style="margin-top:8px">
+        <b>노면 등급은 「지금 위험한가」가 아니라 「언제까지 고쳐야 하는가」입니다.</b>
+        그래서 위 표와 이름을 통일하지 않았습니다.
+      </p>
+
+      <table class="ug-table" style="margin:10px 0 14px">
+        <thead><tr>
+          <th style="width:34%">　</th>
+          <th style="width:33%">침수 · 인파 <span style="font-weight:400;color:var(--muted)">(위험등급)</span></th>
+          <th style="width:33%">노면 <span style="font-weight:400;color:var(--muted)">(정비 등급)</span></th>
+        </tr></thead>
+        <tbody>
+          <tr><td>등급</td>
+              <td>관심 · 주의 · 경계 · 심각</td>
+              <td>양호 · 관찰 · 보수 필요 · 긴급</td></tr>
+          <tr><td>뜻하는 것</td>
+              <td><b>지금 위험한가</b></td>
+              <td><b>언제 고쳐야 하는가</b></td></tr>
+          <tr><td>시간 축</td><td>실시간(초·분)</td><td>주 · 월 단위</td></tr>
+          <tr><td>쓰는 자리</td><td>상황판 이벤트 · 경보</td><td>정비 계획 · 예산</td></tr>
+          <tr><td>가장 높은 등급</td>
+              <td>「심각」 = <b>지금 통제하라</b></td>
+              <td>「긴급」 = <b>빨리 보수하라</b></td></tr>
+        </tbody>
+      </table>
+
+      <p class="ug-note">
+        ⚠ <b>노면 등급은 경보를 만들지 않습니다.</b> 상황판 이벤트로 올라갈 때는
+        별도 규칙으로 위험등급(관심·주의·경계)으로 옮겨 적힙니다 — 정비가 급한
+        것과 지금 위험한 것은 다르기 때문입니다.
+      </p>
+      <p class="ug-note">
+        ⚠ <b>단위가 「건/100m」입니다.</b> 구간 길이로 보정한 값이라,
+        <b>구간 길이를 넣지 않은 지점은 판정 자체가 나오지 않습니다</b>(「미보정」).
+        「미보정」은 「양호」가 아닙니다 — 점검이 끝났다는 뜻이 아닙니다.
+      </p>
+
+      {% for key, label, unit, rows in maint_domains %}
+      <h4 style="margin:16px 0 6px">{{ label }}
+        <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+          {{ unit }}</span></h4>
+      <table class="ug-table">
+        <thead><tr>
+          <th style="width:110px">등급</th><th style="width:160px">기준값 이상</th>
+          <th>근거</th>
+        </tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td><b style="color:{{ r.color or 'inherit' }}">{{ r.label }}</b></td>
+            <td><input name="min_{{ r.id }}" value="{{ r.min_value }}"
+                       inputmode="decimal"
+                       style="width:100%;padding:8px;background:var(--bg);
+                              color:var(--text);border:1px solid var(--border);
+                              border-radius:6px"></td>
+            <td style="font-size:.82rem;color:var(--muted)">{{ r.source_note }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endfor %}
+
+      <p class="ug-note">
+        가장 낮은 등급 <b>「양호」</b>는 구간이 없습니다 — 위 어느 기준에도
+        못 미치면 양호입니다.
+      </p>
+    </div>
+    {% endif %}
+
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 22px;margin-top:12px">저장</button>
+  </form>
+  <p class="ug-note">
+    ⚠ <b>높은 등급의 기준값이 낮은 등급보다 커야</b> 합니다. 그렇지 않으면
+    낮은 등급이 영원히 나오지 않아 저장을 막습니다.
+  </p>
+  <p class="ug-note">
+    ⚠ <b>노면은 여기에 없습니다.</b> 노면은 「양호·관찰·보수 필요·긴급」으로
+    위험등급이 아니라 <b>정비 등급</b>입니다 — 「지금 위험하다」가 아니라
+    「언제까지 고쳐야 한다」라서 같은 척도에 올리면 뜻이 엉킵니다.
+    <b>그대로 두기로 확정</b>했습니다(2026-08-19).
+  </p>
+  <p class="ug-note">
+    ⚠ 침수 <b>분석 영상 오버레이</b>의 5단계(정상·관찰·주의·위험·도로 통제
+    권고)도 여기 없습니다. 상황판 이벤트 등급과 다른 자리이며
+    <b>그대로 두기로 확정</b>했습니다(2026-08-19).
+  </p>
+</section>
+
+<section class="ug-card">
+  <h3>침수 위험도 알림 발동 등급</h3>
+  <p class="ug-note">
+    <b>몇 등급부터 SOLAPI 알림을 보낼지</b>를 정합니다. 침수 위험도
+    (물 세그멘테이션 · RiskEngine)는 1(매우 낮음)~5(매우 높음) 점수로
+    나오는데, 여기서 정한 등급 <b>이상</b>일 때 문자를 보냅니다.
+  </p>
+  <p class="ug-note">
+    ⚠ <b>기본값 4(「높음」)는 개발사 판단이며 부산 실환경에서 검증되지
+    않았습니다.</b> 재난 담당부서와 협의해 조정하십시오. 예전에는 이
+    알림이 아예 없어서 교통 정체가 심하지 않으면 침수만으로는 문자가
+    나가지 않았습니다 — 침수·교통 도메인을 나누며 새로 생긴 기능입니다.
+  </p>
+  <form method="post" action="/settings/levels/flood-notify">
+    <select name="grade" style="padding:8px;background:var(--bg);
+                                color:var(--text);border:1px solid var(--border);
+                                border-radius:6px">
+      {% for g, label in ((1,"1 · 매우 낮음"),(2,"2 · 낮음"),(3,"3 · 보통"),
+                          (4,"4 · 높음"),(5,"5 · 매우 높음")) %}
+      <option value="{{ g }}" {{ "selected" if g == flood_notify_min_grade else "" }}>
+        {{ label }}{{ " (기본값)" if g == 4 else "" }}</option>
+      {% endfor %}
+    </select>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 22px;margin-left:10px">저장</button>
+  </form>
+</section>
+
+<section class="ug-card">
+  <h3>교통위험 알림 발동 심각도</h3>
+  <p class="ug-note">
+    <b>몇 심각도부터 SOLAPI 알림을 보낼지</b>를 정합니다. 교통위험(강우 ×
+    정체·정지차량)은 관심·주의·경계·심각 4단계로 판정되는데, 여기서 정한
+    심각도 <b>이상</b>일 때 문자를 보냅니다.
+  </p>
+  <p class="ug-note">
+    기본값은 <b>경계(기존 동작 그대로)</b>입니다 — 이번에 화면만 새로
+    만들었을 뿐 바꾸지 않았습니다.
+  </p>
+  <form method="post" action="/settings/levels/traffic-notify">
+    <select name="severity" style="padding:8px;background:var(--bg);
+                                   color:var(--text);border:1px solid var(--border);
+                                   border-radius:6px">
+      {% for s, label in ((0,"관심"),(1,"주의"),(2,"경계"),(3,"심각")) %}
+      <option value="{{ s }}" {{ "selected" if s == traffic_notify_min_severity else "" }}>
+        {{ label }}{{ " (기본값)" if s == 2 else "" }}</option>
+      {% endfor %}
+    </select>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 22px;margin-left:10px">저장</button>
+  </form>
+</section>
+
+<section class="ug-card">
+  <h3>인파 밀집도 이벤트 발생 심각도</h3>
+  <p class="ug-note">
+    인파는 <b>SOLAPI 자동 알림이 없습니다</b>(부서 통보는 관제요원이
+    이벤트 상세에서 수동으로 요청합니다). 그래서 <b>몇 심각도부터 관제
+    화면에 이벤트로 올릴지</b>가 실질적인 경보 문턱입니다.
+  </p>
+  <p class="ug-note">
+    ⚠ 기본값 <b>「군중급증위험」(실측 근거 있음, 2026-08-19 조사)</b>은
+    그대로입니다 — 「이동흐름혼란」은 관측 670회 중 93.6%를 차지해 문턱에
+    넣으면 이벤트가 폭주합니다. 낮춰서 켜기 전에 현장 빈도를 먼저
+    확인하십시오.
+  </p>
+  <p class="ug-note">
+    ⚠ <b>「정상」·「군중밀집」을 골라도 실제로는 아무것도 바뀌지 않습니다</b>
+    — 상황판 이벤트는 도메인과 무관하게 「주의」 이상만 만들어지도록 정해져
+    있어, 이 두 단계는 이 설정과 무관하게 원래도 이벤트가 되지 않습니다.
+    이 설정이 실제로 여닫는 범위는 「이동흐름혼란」부터입니다.
+  </p>
+  <form method="post" action="/settings/levels/crowd-notify">
+    <select name="severity" style="padding:8px;background:var(--bg);
+                                   color:var(--text);border:1px solid var(--border);
+                                   border-radius:6px">
+      {% for s, label in ((0,"정상"),(1,"군중밀집"),(2,"이동흐름혼란"),
+                          (3,"군중급증위험"),(4,"패닉분산")) %}
+      <option value="{{ s }}" {{ "selected" if s == crowd_density_min_severity else "" }}>
+        {{ label }}{{ " (기본값)" if s == 3 else "" }}</option>
+      {% endfor %}
+    </select>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 22px;margin-left:10px">저장</button>
+  </form>
+</section>
+
+<section class="ug-card">
+  <h3>노면 손상 이벤트 발생 등급</h3>
+  <p class="ug-note">
+    노면도 <b>SOLAPI 자동 알림이 없습니다.</b> <b>몇 등급부터 관제
+    화면에 이벤트로 올릴지</b>를 정합니다.
+  </p>
+  <p class="ug-note">
+    기본값 <b>「양호」(기존 동작 그대로)</b>입니다.
+  </p>
+  <p class="ug-note">
+    ⚠ <b>「양호」·「관찰」을 골라도 실제로는 아무것도 바뀌지 않습니다</b> —
+    상황판 이벤트는 도메인과 무관하게 「주의」 이상만 만들어지도록 정해져
+    있어, 이 두 등급은 이 설정과 무관하게 원래도 이벤트가 되지 않습니다.
+    이 설정이 실제로 여닫는 범위는 「보수 필요」·「긴급」뿐입니다 —
+    경미한 손상까지 다 올라와 번거로우면 「보수 필요」 이상으로 올리십시오.
+  </p>
+  <form method="post" action="/settings/levels/road-notify">
+    <select name="grade" style="padding:8px;background:var(--bg);
+                                color:var(--text);border:1px solid var(--border);
+                                border-radius:6px">
+      {% for g, label in ((1,"양호"),(2,"관찰"),(3,"보수 필요"),(4,"긴급")) %}
+      <option value="{{ g }}" {{ "selected" if g == road_event_min_grade else "" }}>
+        {{ label }}{{ " (기본값)" if g == 1 else "" }}</option>
+      {% endfor %}
+    </select>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 22px;margin-left:10px">저장</button>
+  </form>
+</section>
+
+{% if can_edit_levels %}
+<section class="ug-card">
+  <h3>강수(rainfall) 데이터 출처</h3>
+  <p class="ug-note">
+    침수·교통위험 판정이 함께 쓰는 <b>강수량(mm/h) 입력값의 출처</b>입니다.
+    카메라별로 따로 지정한 지점이 없으면(현재 39개소 전부 미지정) 여기서
+    고른 값이 전체에 적용됩니다.
+  </p>
+  <p class="ug-note">
+    ⚠ <b>차량 검출·정체·정지차량 판정은 이 설정과 무관하게 이미 실제
+    CCTV 영상(YOLO)으로 동작합니다</b> — 이 설정이 바꾸는 것은
+    <b>강수량 입력값 하나뿐</b>입니다(2026-08-27 조사).
+  </p>
+  {% if not kma_key_present %}
+  <p class="ug-note">
+    ⚠ <b>.env 의 KMA_SERVICE_KEY 가 비어 있습니다.</b> 「기상청 실측」을
+    골라도 키가 없으면 자동으로 합성값(sine)으로 되돌아갑니다.
+  </p>
+  {% endif %}
+  <p class="ug-note">
+    ⚠ 이 설정은 카메라별 판정기를 새로 만드는 시점에만 반영됩니다 —
+    <b>저장 후 서비스를 재기동</b>해야 실제로 바뀝니다.
+  </p>
+  <form method="post" action="/settings/levels/rainfall-backend">
+    <select name="backend" style="padding:8px;background:var(--bg);
+                                  color:var(--text);border:1px solid var(--border);
+                                  border-radius:6px">
+      {% for key, info in rainfall_backends.items() %}
+      <option value="{{ key }}" {{ "selected" if key == rainfall_backend else "" }}>
+        {{ info[0] }}</option>
+      {% endfor %}
+    </select>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 22px;margin-left:10px">저장</button>
+  </form>
+  <p class="ug-note" style="margin-top:8px">
+    {% for key, info in rainfall_backends.items() %}
+    <b>{{ info[0] }}</b> — {{ info[1] }}<br>
+    {% endfor %}
+  </p>
+</section>
+
+<section class="ug-card">
+  <h3>인파 상시 카메라별 모니터링 — 검출 소스</h3>
+  <p class="ug-note">
+    CCTV 관리(S-80)에서 「인파·상시」로 지정한 카메라마다 별도 스레드가
+    계속 관측합니다(교통위험과 같은 방식). 이 설정은 카메라별로 검출
+    소스를 따로 지정하지 않았을 때(현재 전부 미지정) 전체에 적용되는
+    <b>기본 검출 소스</b>입니다.
+  </p>
+  <p class="ug-note">
+    ⚠ <b>CPU 부담이 아직 실측되지 않았습니다.</b> 사람 검출은 화면을
+    2×2로 나눠 각각 추론하는 방식이라 <b>프레임당 약 1.6초</b>가
+    걸립니다 — 카메라를 여러 대 동시에 「실제 검출」로 켜면 관제 서버
+    CPU가 감당하지 못할 수 있습니다. <b>카메라를 하나씩 켜며 CPU를
+    관찰하십시오.</b> 감당이 안 되면 여기서 즉시 「합성값」으로 전체를
+    되돌릴 수 있습니다.
+  </p>
+  <p class="ug-note">
+    ⚠ 이 설정은 카메라별 판정기를 새로 만드는 시점에만 반영됩니다 —
+    <b>저장 후 서비스를 재기동</b>해야 실제로 바뀝니다. 개별 카메라의
+    상시 지정 자체(켜기/끄기)도 마찬가지로 재기동 후 반영됩니다
+    (CCTV 관리 화면의 「탐지 지정」 참고 — 추적·배회 타이머가 끊기지
+    않도록 서비스 기동 시점에 대상을 고정하는 설계입니다).
+  </p>
+  <form method="post" action="/settings/levels/crowd-continuous-source">
+    <select name="source" style="padding:8px;background:var(--bg);
+                                 color:var(--text);border:1px solid var(--border);
+                                 border-radius:6px">
+      {% for key, info in crowd_continuous_sources.items() %}
+      <option value="{{ key }}" {{ "selected" if key == crowd_continuous_source else "" }}>
+        {{ info[0] }}</option>
+      {% endfor %}
+    </select>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 22px;margin-left:10px">저장</button>
+  </form>
+  <p class="ug-note" style="margin-top:8px">
+    {% for key, info in crowd_continuous_sources.items() %}
+    <b>{{ info[0] }}</b> — {{ info[1] }}<br>
+    {% endfor %}
+  </p>
+
+  {# ★ 2026-08-29 — 인파 타일 격자(「4대탐지기능 성능개선 로드맵」 1단계).
+     같은 카드 안에 둔다 — 둘 다 "실제 검출" 모드에서만 의미가 있고,
+     같은 CPU 부담 상충관계를 다룬다. #}
+  <h4 style="margin:20px 0 6px">타일 격자 — 원경 인물 검출력</h4>
+  <p class="ug-note" style="margin-top:0">
+    화면을 몇×몇으로 나눠 각각 검출할지입니다. 세분화할수록 멀리 있는
+    작은 인물까지 더 잡아내지만(2×2 데모 실측: 검출률 21%→100%), 타일
+    수만큼 추론 횟수가 늘어 CPU 부담도 커집니다. <b>3×3·4×4는 이
+    프로젝트에서 아직 실측 검증되지 않았습니다</b> — 카메라 한 대에
+    먼저 적용해 CPU와 검출 결과를 관찰한 뒤 넓히는 것을 권장합니다.
+  </p>
+  <form method="post" action="/settings/levels/crowd-tile-grid">
+    <select name="grid" style="padding:8px;background:var(--bg);
+                               color:var(--text);border:1px solid var(--border);
+                               border-radius:6px">
+      {% for key, info in crowd_tile_grid_options.items() %}
+      <option value="{{ key }}" {{ "selected" if key == crowd_tile_grid else "" }}>
+        {{ info[0] }}</option>
+      {% endfor %}
+    </select>
+    <button class="ug-btn" type="submit"
+            style="width:auto;padding:10px 22px;margin-left:10px">저장</button>
+  </form>
+  <p class="ug-note" style="margin-top:8px">
+    {% for key, info in crowd_tile_grid_options.items() %}
+    <b>{{ info[0] }}</b> — {{ info[1] }}<br>
+    {% endfor %}
+  </p>
+</section>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,312 @@
+{# S-04 교대 인수인계.
+
+   이 화면이 하는 일
+     관제는 24시간 이어지는데 사람은 8~12시간마다 바뀐다. 그 이음매에 아무것도
+     없으면 야간에 열린 이벤트가 아무도 안 보는 채로 남는다.
+
+   왜 한 화면인가
+     교대 시각은 바쁘다. 쓰다 만 인계문 이어쓰기·확인 대기·지난 기록을 나눠
+     놓으면 안 쓴다.
+
+   미처리 이벤트는 자동으로 붙는다
+     손으로 옮겨 적으면 반드시 빠지고, 빠지는 것은 대체로 「별일 아니라고
+     생각한 것」이며, 사고는 거기서 난다. 넘긴 뒤에는 스냅샷으로 굳어 이벤트가
+     종결돼도 「인계 시점에 무엇이 열려 있었나」가 남는다. #}
+{% extends "_layout.html" %}
+{% block title %}교대 인수인계 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>교대 인수인계</h2>
+  <p>근무조가 바뀔 때 넘길 내용을 적습니다. <b>지금 열려 있는 이벤트는 자동으로
+    첨부</b>되므로 옮겨 적지 않아도 됩니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+<!-- 확인 대기 — 로그인하면 이것부터 보여야 한다 -->
+{% if pending %}
+<section class="ug-card" style="margin-bottom:16px;
+         border-color:rgba(210,153,34,.45)">
+  <h3>확인해야 할 인계 {{ pending|length }}건</h3>
+  {% for r in pending %}
+  <div style="padding:12px 0;border-top:1px solid var(--border)">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:baseline">
+      <b>{{ r.shift_date.strftime("%Y-%m-%d") }} {{ r.shift_name }}</b>
+      <span style="color:var(--muted);font-size:.85rem">
+        인계 {{ r.from_login or "—" }}
+        {% if r.submitted_at %} · {{ r.submitted_at.strftime("%m-%d %H:%M") }}{% endif %}</span>
+      {% set items = open_items(r) %}
+      {% if items %}
+      <span class="ug-badge ug-badge--warn">미처리 이벤트 {{ items|length }}건</span>
+      {% endif %}
+    </div>
+    {% if r.summary %}
+    <p style="margin:8px 0 0;white-space:pre-wrap;line-height:1.6">{{ r.summary }}</p>
+    {% endif %}
+    {% if r.todo %}
+    <div style="margin-top:8px;padding:10px 12px;border-radius:8px;
+                background:rgba(210,153,34,.1)">
+      <b style="font-size:.85rem;color:#ffcf7a">다음 근무조가 할 일</b>
+      <p style="margin:4px 0 0;white-space:pre-wrap;line-height:1.6">{{ r.todo }}</p>
+    </div>
+    {% endif %}
+    {% if items %}
+    <div class="ug-tablewrap" style="margin-top:10px">
+      <table class="ug-table">
+        <thead><tr><th>이벤트</th><th>지점</th><th>등급</th><th>경과</th>
+          <th>SOP</th></tr></thead>
+        <tbody>
+        {% for it in items %}
+        <tr>
+          <td style="white-space:nowrap">
+            <a href="/events/{{ it.id }}" style="color:var(--accent)">#{{ it.id }}</a>
+            <span style="color:var(--muted);font-size:.78rem">
+              {{ domain_labels.get(it.domain, it.domain) }}</span></td>
+          <td style="white-space:normal">{{ it.place }}</td>
+          <td style="white-space:nowrap">{{ it.level }}</td>
+          <td style="white-space:nowrap;color:var(--muted)">{{ it.elapsed }}</td>
+          <td style="white-space:nowrap;font-size:.82rem">
+            {{ it.sop_done }}/{{ it.sop_total }}
+            {% if it.sop_left %}
+            <span class="ug-badge ug-badge--warn">필수 {{ it.sop_left }}</span>
+            {% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    {% if can_ack %}
+    <form method="post" action="/handover/ack"
+          style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <input type="hidden" name="row_id" value="{{ r.id }}">
+      <input name="note" placeholder="인수 메모 (선택)"
+             style="flex:1 1 220px;min-width:0;padding:9px 11px;
+                    background:var(--bg);color:var(--text);
+                    border:1px solid var(--border);border-radius:8px">
+      <button class="ug-btn" type="submit"
+              style="width:auto;padding:9px 18px">인수 확인</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if can_edit %}
+<!-- 작성 -->
+<section class="ug-card" style="margin-bottom:16px">
+  <h3>{% if draft %}작성중인 인계문 (#{{ draft.id }}){% else %}인계문 작성{% endif %}</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:0 0 12px">
+    「저장」은 나중에 이어서 씁니다. 「인계하기」를 누르면 그 시점의 미처리
+    이벤트가 굳어지고 <b>더 이상 고칠 수 없습니다</b> — 넘긴 내용이 나중에
+    바뀌면 인수자가 확인한 것이 무엇인지 알 수 없기 때문입니다.</p>
+
+  <form method="post" action="/handover/save" id="h-form">
+    <input type="hidden" name="row_id"
+           value="{{ form.get('row_id', draft.id if draft else '') }}">
+    <div class="ug-cards" style="--ug-gap:12px">
+      <div class="ug-field"><label for="h-shift">근무조</label>
+        <input id="h-shift" name="shift_name" required autocomplete="off"
+               list="shift-list" placeholder="주간 / 야간 / 심야"
+               value="{{ form.get('shift_name', draft.shift_name if draft else '') }}">
+        <datalist id="shift-list">
+          {% for s in presets %}<option value="{{ s }}">{% endfor %}
+        </datalist></div>
+      <div class="ug-field"><label for="h-to">인수자 (선택)</label>
+        <input id="h-to" name="to_login" autocomplete="off" list="op-list"
+               placeholder="비우면 확인한 사람이 인수자가 됩니다"
+               value="{{ form.get('to_login', draft.to_login if draft else '') }}">
+        <datalist id="op-list">
+          {% for o in operators %}<option value="{{ o }}">{% endfor %}
+        </datalist></div>
+    </div>
+
+    <div class="ug-field"><label for="h-sum">인계 내용</label>
+      <textarea id="h-sum" name="summary" rows="4"
+                placeholder="근무 중 무슨 일이 있었는지. 판단 근거와 아직 확실하지 않은 것도 적습니다."
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px;font:inherit"
+        >{{ form.get('summary', draft.summary if draft else '') }}</textarea></div>
+
+    <div class="ug-field"><label for="h-todo">다음 근무조가 할 일</label>
+      <textarea id="h-todo" name="todo" rows="3"
+                placeholder="요약과 나눠 적습니다. 섞으면 읽는 사람이 「내가 할 일」을 못 찾습니다."
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px;font:inherit"
+        >{{ form.get('todo', draft.todo if draft else '') }}</textarea></div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="ug-btn ug-btn--ghost" type="submit" name="submit" value=""
+              style="width:auto;padding:10px 20px">저장 (아직 인계 안 함)</button>
+      <button class="ug-btn" type="submit" name="submit" value="1"
+              style="width:auto;padding:10px 20px"
+              onclick="return confirm('인계하면 더 이상 고칠 수 없습니다. 지금 열려 있는 이벤트 {{ preview.count }}건이 함께 넘어갑니다. 진행할까요?')"
+        >인계하기</button>
+    </div>
+  </form>
+
+  <!-- 지금 붙을 이벤트 미리보기 -->
+  <details style="margin-top:14px" {% if preview.count %}open{% endif %}>
+    <summary style="cursor:pointer;font-weight:600">
+      지금 넘어갈 미처리 이벤트 {{ preview.count }}건
+      <span style="font-weight:400;color:var(--muted);font-size:.85rem">
+        — 인계 시점에 다시 집계됩니다</span></summary>
+    {% if preview['items'] %}
+    <div class="ug-tablewrap" style="margin-top:10px">
+      <table class="ug-table">
+        <thead><tr><th>이벤트</th><th>지점</th><th>등급</th><th>경과</th>
+          <th>SOP</th></tr></thead>
+        <tbody>
+        {% for it in preview['items'] %}
+        <tr>
+          <td style="white-space:nowrap">
+            <a href="/events/{{ it.id }}" style="color:var(--accent)">#{{ it.id }}</a>
+            <span style="color:var(--muted);font-size:.78rem">
+              {{ domain_labels.get(it.domain, it.domain) }}</span></td>
+          <td style="white-space:normal">{{ it.place }}</td>
+          <td style="white-space:nowrap">{{ it.level }}</td>
+          <td style="white-space:nowrap;color:var(--muted)">{{ it.elapsed }}</td>
+          <td style="white-space:nowrap;font-size:.82rem">
+            {{ it.sop_done }}/{{ it.sop_total }}
+            {% if it.sop_left %}
+            <span class="ug-badge ug-badge--warn">필수 {{ it.sop_left }}</span>
+            {% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="ug-empty" style="padding:10px 0">열려 있는 이벤트가 없습니다.</p>
+    {% endif %}
+  </details>
+</section>
+{% endif %}
+
+<!-- 지난 기록 -->
+<section class="ug-card">
+  <h3>인계 기록
+    <span style="font-size:.85rem;font-weight:400;color:var(--muted)">
+      작성중 {{ counts.draft }} · 인계함 {{ counts.submitted }} ·
+      확인 {{ counts.acknowledged }}</span></h3>
+
+  <form method="get" action="/handover"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;
+               margin-bottom:14px">
+    <div class="ug-field" style="margin:0;min-width:180px;flex:2 1 220px">
+      <label for="f-q">검색어</label>
+      <input id="f-q" name="q" value="{{ filt.q }}"
+             placeholder="근무조·인계자·내용 일부">
+    </div>
+    <div class="ug-field" style="margin:0;min-width:150px;flex:1 1 150px">
+      <label for="f-status">상태</label>
+      <select id="f-status" name="status" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in status_labels.items() %}
+        <option value="{{ v }}" {% if filt.status == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:140px;flex:1 1 140px">
+      <label for="f-days">기간</label>
+      <select id="f-days" name="days" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        <option value="7" {% if filt.days == '7' %}selected{% endif %}>최근 7일</option>
+        <option value="30" {% if filt.days == '30' %}selected{% endif %}>최근 30일</option>
+        <option value="90" {% if filt.days == '90' %}selected{% endif %}>최근 90일</option>
+      </select>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+    <a class="ug-btn ug-btn--ghost" href="/handover"
+       style="width:auto;padding:11px 18px;text-decoration:none;text-align:center">
+      조건 해제</a>
+  </form>
+
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>근무일 / 조</th><th>인계 → 인수</th><th>내용</th>
+        <th style="text-align:right">첨부</th><th>상태</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="white-space:nowrap">
+          {{ r.shift_date.strftime("%Y-%m-%d") }}
+          <div style="font-size:.8rem;color:var(--muted)">{{ r.shift_name }}
+            · #{{ r.id }}</div>
+        </td>
+        <td style="white-space:nowrap;font-size:.85rem">
+          {{ r.from_login or "—" }}
+          <div style="color:var(--muted)">→ {{ r.to_login or "미정" }}</div>
+        </td>
+        <td style="white-space:normal;max-width:420px">
+          <details>
+            <summary style="cursor:pointer">
+              {{ (r.summary or "(내용 없음)")[:60] }}{% if r.summary|length > 60 %}…{% endif %}
+            </summary>
+            <div style="margin:8px 0 0;font-size:.86rem;line-height:1.6">
+              <p style="margin:0;white-space:pre-wrap">{{ r.summary or "—" }}</p>
+              {% if r.todo %}
+              <p style="margin:10px 0 2px"><b>다음 근무조가 할 일</b></p>
+              <p style="margin:0;color:var(--muted);white-space:pre-wrap">{{ r.todo }}</p>
+              {% endif %}
+              {% if r.ack_note %}
+              <p style="margin:10px 0 2px"><b>인수 메모</b></p>
+              <p style="margin:0;color:var(--muted);white-space:pre-wrap">{{ r.ack_note }}</p>
+              {% endif %}
+              {% set items = open_items(r) %}
+              {% if items %}
+              <p style="margin:10px 0 2px"><b>인계 시점 미처리 이벤트</b></p>
+              <ul style="margin:0;padding-left:18px;color:var(--muted)">
+                {% for it in items %}
+                <li><a href="/events/{{ it.id }}" style="color:inherit"
+                       >#{{ it.id }}</a> {{ it.place }} · {{ it.level }}
+                  ({{ domain_labels.get(it.domain, it.domain) }})</li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </div>
+          </details>
+        </td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums">
+          {{ open_items(r)|length }}건</td>
+        <td style="white-space:nowrap">
+          {% if r.status == "acknowledged" %}
+            <span class="ug-badge ug-badge--on">인수 확인</span>
+            {% if r.acknowledged_at %}
+            <div style="font-size:.75rem;color:var(--muted)">
+              {{ r.acknowledged_at.strftime("%m-%d %H:%M") }}</div>{% endif %}
+          {% elif r.status == "submitted" %}
+            <span class="ug-badge ug-badge--warn">확인 대기</span>
+          {% else %}
+            <span class="ug-badge ug-badge--off">작성중</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="ug-empty">
+        {% if filt.q or filt.status or filt.days %}조건에 맞는 기록이 없습니다.
+        {% else %}인계 기록이 없습니다.{% endif %}
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<p class="ug-note">인계 기록은 <b>삭제할 수 없습니다</b> — 지울 수 있으면
+  「전달 못 받았다」는 다툼에 답할 근거가 사라집니다. 인계자 본인은 자기가
+  넘긴 문서를 인수 확인할 수 없습니다. 인계·확인 사실은
+  <a href="/admin/audit" style="color:inherit">감사 로그 (S-91)</a>에도
+  남습니다.</p>
+{% endblock %}

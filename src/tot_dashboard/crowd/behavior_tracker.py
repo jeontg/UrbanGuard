@@ -24,10 +24,19 @@ class CrowdBehaviorTracker:
 
     def __init__(self, fps=30, hist=10):
         import supervision as sv
+
+        from ..common import tracking
         self.sv = sv
-        self.tracker = sv.ByteTrack(frame_rate=int(max(fps, 1)))
+        # 추적기는 어댑터가 고른다 — ``supervision.ByteTrack`` 은 0.31.0 에서
+        # 제거되고 후속은 ``trackers`` 패키지다(``common/tracking.py`` 참고).
+        self.tracker = tracking.Tracker(fps=fps)
         self.tracks = defaultdict(lambda: deque(maxlen=hist))
         self.speed_baseline = deque(maxlen=60)
+
+    @property
+    def backend(self) -> str:
+        """어느 추적기를 쓰고 있나. 결과가 달라지면 여기부터 본다."""
+        return self.tracker.backend
 
     def update(self, boxes, scores, t):
         sv = self.sv
@@ -38,9 +47,18 @@ class CrowdBehaviorTracker:
             confidence=np.asarray(scores, np.float32),
             class_id=np.zeros(len(boxes), int),
         )
-        det = self.tracker.update_with_detections(det)
+        det = self.tracker.update(det)
         cents = {}
+        # 추적기가 없으면 tracker_id 가 비어 있다. 그때는 속도를 못 구하지만
+        # 인원수·밀집도는 계속 나와야 한다.
+        if getattr(det, "tracker_id", None) is None:
+            return self._empty(), det
+        from ..common import tracking
         for xyxy, tid in zip(det.xyxy, det.tracker_id):
+            # 미확정 트랙(-1)은 속도 계산에서 뺀다. 넣으면 여러 사람이 한
+            # 트랙으로 뭉쳐 다음 프레임에 좌표가 급점프한다.
+            if not tracking.is_confirmed(tid):
+                continue
             cx, cy = (xyxy[0] + xyxy[2]) / 2, (xyxy[1] + xyxy[3]) / 2
             self.tracks[tid].append((t, cx, cy))
             cents[tid] = (cx, cy)

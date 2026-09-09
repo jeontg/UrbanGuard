@@ -1,0 +1,543 @@
+{# S-88 증거 영상 관리 — 저장 등급 설정 · 등급별 확인 · 삭제.
+
+   왜 한 화면인가
+     「어느 등급을 남길지」와 「지금 뭐가 쌓여 있는지」는 같이 봐야 판단이 된다.
+     설정만 있고 용량이 안 보이면 언제 지워야 할지 알 수 없다.
+
+   왜 요란한가
+     여기 파일은 개인정보다. 사람과 차량이 찍힌다. 내려받기·삭제가 감사
+     로그에 남는다는 사실을 화면이 말해 줘야 한다. #}
+{% extends "_layout.html" %}
+{% block title %}증거 영상 관리 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>증거 영상 관리</h2>
+  <p>탐지 이벤트가 발생하면 그 <b>직전 {{ pre_sec }}초 ~ 직후 {{ post_sec }}초</b>를
+    근거 자료로 남깁니다. 어느 등급에서 남길지 아래에서 정하고, 쌓인 자료를
+    등급별로 확인·삭제할 수 있습니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+<!-- 등급별 현황 -->
+<div class="ug-cards" style="margin-bottom:16px">
+  {% for lv in levels %}
+  {% set st = summary.per.get(lv) or {"count": 0, "bytes": 0} %}
+  <div class="ug-card">
+    <h3 style="margin:0 0 6px;font-size:.86rem;color:var(--muted)">{{ lv }}
+      {% if lv in selected %}
+      <span class="ug-badge ug-badge--on">저장</span>
+      {% else %}
+      <span class="ug-badge ug-badge--off">미저장</span>
+      {% endif %}</h3>
+    <p style="margin:0;font-size:1.6rem;font-variant-numeric:tabular-nums">
+      {{ st.count }}<span style="font-size:.9rem">건</span></p>
+    <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">
+      {{ human_size(st.bytes) }}</p>
+    {% if can_delete and st.count %}
+    <form method="post" action="/admin/evidence/delete-level" style="margin-top:10px"
+          onsubmit="return confirm('「{{ lv }}」 등급 증거 자료 {{ st.count }}건({{ human_size(st.bytes) }})을 모두 삭제합니다.\n\n되돌릴 수 없습니다. 진행할까요?')">
+      <input type="hidden" name="level" value="{{ lv }}">
+      <button class="ug-btn ug-btn--ghost" type="submit"
+              style="width:auto;padding:5px 12px;font-size:.78rem;color:#ff9a9c"
+        >등급 전체 삭제</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <div class="ug-card">
+    <h3 style="margin:0 0 6px;font-size:.86rem;color:var(--muted)">합계</h3>
+    <p style="margin:0;font-size:1.6rem;font-variant-numeric:tabular-nums">
+      {{ summary.total.count }}<span style="font-size:.9rem">건</span></p>
+    <p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">
+      {{ human_size(summary.total.bytes) }}
+      {% if active_jobs %}· 수집 중 {{ active_jobs }}건{% endif %}</p>
+  </div>
+</div>
+
+{% if can_configure %}
+<!-- 저장 등급 설정 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <h3>저장 등급</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:0 0 12px">
+    체크한 등급의 이벤트에만 증거 영상을 남깁니다.
+    <b>영상은 개인정보</b>라 넓게 잡을수록 보관 부담과 책임이 커집니다.</p>
+
+  <form method="post" action="/admin/evidence/levels">
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+      {% for lv in levels %}
+      <label style="display:flex;gap:9px;align-items:flex-start;cursor:pointer">
+        <input type="checkbox" name="levels" value="{{ lv }}"
+               style="margin-top:3px"{% if lv in selected %} checked{% endif %}>
+        <span>
+          <b>{{ lv }}</b>
+          {% if lv == "심각" %}
+          <span style="font-size:.8rem;color:var(--muted)">— 즉시 통보·조치 대상. 근거가 가장 필요합니다</span>
+          {% elif lv == "경계" %}
+          <span style="font-size:.8rem;color:var(--muted)">— 부서 통보 대상. 사후 검토에 쓰입니다</span>
+          {% elif lv == "주의" %}
+          <span style="font-size:.8rem;color:var(--muted)">— 평상시에도 자주 뜹니다. 쓰이지 않는 영상이 쌓일 수 있습니다</span>
+          {% else %}
+          <span style="font-size:.8rem;color:var(--muted)">— 참고 단계</span>
+          {% endif %}
+          {# 임계값보다 낮은 등급은 이벤트로 올라오지 않는다. 고를 수는 있게
+             두되 「골라도 안 남는다」는 사실을 반드시 알려 준다. #}
+          {% if lv in dead_levels %}
+          <span style="display:block;font-size:.78rem;color:#ffcf7a;margin-top:2px">
+            ⚠ 현재 「{{ lv }}」은(는) 이벤트로 올리지 않는 등급이라(기준:
+            {{ event_threshold }}) 체크해도 실제로는 남지 않습니다. 남기시려면
+            위험도 임계값(S-82) 설정을 함께 조정해야 합니다.</span>
+          {% endif %}
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:10px 20px"
+      >저장</button>
+  </form>
+
+  <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
+
+  <h3 style="margin-top:0">보존기간</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:0 0 12px">
+    설정한 기간이 지난 증거 자료를 <b>자동으로 파기</b>합니다. 영상은
+    개인정보라 목적을 다한 뒤에는 보관하지 않는 것이 원칙입니다.
+    파기 사실은 감사 로그에 남습니다.</p>
+
+  <form method="post" action="/admin/evidence/retention"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:180px">
+      <label for="ret">보존기간</label>
+      <select id="ret" name="months" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        {% for v, l in retention_choices %}
+        <option value="{{ v }}" {% if retention_months == v %}selected{% endif %}
+          >{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px"
+      >저장</button>
+  </form>
+
+  {% if retention_months %}
+  <p class="ug-note" style="margin-top:10px">
+    지금 기준으로 <b>{{ expiring_at.strftime("%Y-%m-%d") }}</b> 이전에 수집된
+    자료가 파기 대상입니다. 확인은 한 시간마다 이뤄집니다.</p>
+  {% else %}
+  <p class="ug-note" style="margin-top:10px;color:#ffcf7a">
+    ⚠ <b>자동 파기가 꺼져 있습니다.</b> 증거 자료가 계속 쌓이며 직접 지우기
+    전까지 남습니다. 기관의 개인정보 보유기간 규정에 맞춰 기간을 정해
+    주십시오.</p>
+  {% endif %}
+
+  <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
+
+  <p class="ug-note" style="margin-top:12px">
+    한 건당 대략 {{ pre_sec + post_sec }}초 · {{ fps }}fps 로 남습니다
+    (정지영상 1장 + 클립 1개). 설정은 <b>앞으로 발생하는 이벤트</b>부터
+    적용되며, 이미 쌓인 자료는 그대로 남습니다.</p>
+</div>
+{% endif %}
+
+<!-- 검색 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <form method="get" action="/admin/evidence"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:150px;flex:1 1 150px">
+      <label for="f-level">등급</label>
+      <select id="f-level" name="level" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for lv in levels %}
+        <option value="{{ lv }}" {% if filt.level == lv %}selected{% endif %}>{{ lv }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:150px;flex:1 1 150px">
+      <label for="f-domain" style="font-size:.82rem;color:var(--muted)">도메인</label>
+      <select id="f-domain" name="domain"
+              style="padding:7px;background:var(--bg);color:var(--text);
+                     border:1px solid var(--border);border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in domain_labels.items() %}
+        <option value="{{ v }}"{% if filt.domain == v %} selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+      <label for="f-kind">종류</label>
+      <select id="f-kind" name="kind" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전체</option>
+        {% for v, l in kind_labels.items() %}
+        <option value="{{ v }}" {% if filt.kind == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:180px;flex:2 1 200px">
+      <label for="f-q">지점</label>
+      <input id="f-q" name="q" value="{{ filt.q }}" placeholder="지점 ID 일부">
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+    <a class="ug-btn ug-btn--ghost" href="/admin/evidence"
+       style="width:auto;padding:11px 18px;text-decoration:none;text-align:center">
+      조건 해제</a>
+  </form>
+</div>
+
+<!-- 목록 -->
+<form method="post" action="/admin/evidence/delete"
+      onsubmit="return confirm('선택한 증거 자료를 삭제합니다.\n\n되돌릴 수 없습니다. 진행할까요?')">
+<div class="ug-card">
+  <h3>증거 자료 ({{ rows|length }}건)</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        {% if can_delete %}<th style="width:32px"></th>{% endif %}
+        <th>수집 시각</th><th>도메인</th><th>이벤트</th><th>지점</th><th>등급</th>
+        <th>종류</th><th style="text-align:right">크기</th><th>자료</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      {% set e = r.ev %}
+      <tr>
+        {% if can_delete %}
+        <td><input type="checkbox" name="ids" value="{{ e.id }}"></td>
+        {% endif %}
+        <td style="white-space:nowrap;font-variant-numeric:tabular-nums">
+          {{ e.captured_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        {# ★ 도메인은 수집 때부터 저장돼 있었는데 화면에 없었다. 관리자가
+           「이게 침수인지 인파인지」를 알려면 이벤트 상세로 들어가야 했다. #}
+        <td style="white-space:nowrap">
+          <span class="ug-badge ev-dom ev-dom--{{ e.domain or 'none' }}"
+            >{{ domain_labels.get(e.domain, e.domain or "—") }}</span></td>
+        <td style="white-space:nowrap">
+          {% if r.event %}
+          <a href="/events/{{ e.event_id }}" style="color:var(--accent)"
+            >#{{ e.event_id }}</a>
+          <div style="font-size:.76rem;color:var(--muted)">{{ r.event.place_name }}</div>
+          {% else %}<span style="color:var(--muted)">#{{ e.event_id }}</span>{% endif %}
+        </td>
+        <td style="white-space:nowrap;font-size:.82rem">{{ e.camera_id or "—" }}</td>
+        <td style="white-space:nowrap">
+          {% if e.level == "심각" %}<span class="ug-badge ug-badge--crit">심각</span>
+          {% elif e.level == "경계" %}<span class="ug-badge ug-badge--crit">경계</span>
+          {% elif e.level == "주의" %}<span class="ug-badge ug-badge--warn">주의</span>
+          {% else %}<span class="ug-badge ug-badge--off">{{ e.level or "—" }}</span>{% endif %}
+        </td>
+        <td style="white-space:nowrap;font-size:.82rem">
+          {{ kind_labels.get(e.kind, e.kind) }}
+          {% if e.duration_sec %}
+          <span style="color:var(--muted)">{{ e.duration_sec }}초</span>{% endif %}
+        </td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;font-size:.82rem">
+          {{ human_size(e.bytes) }}</td>
+        <td style="white-space:nowrap">
+          {# ★ 예전에는 정지영상은 새 탭, 클립은 **곧바로 내려받기**였다.
+             확인만 하려는 경우에도 파일이 디스크에 남았다 — 영상은 개인정보라
+             **보려고 받은 파일이 그대로 방치**된다. 팝업에서 확인하고,
+             정말 필요할 때만 내려받게 한다. #}
+          <button type="button" class="ug-btn ug-btn--ghost"
+                  onclick="evOpen({{ e.id }})"
+                  style="width:auto;padding:4px 10px;font-size:.76rem">보기</button>
+          {% if e.sha256 %}
+          <div style="font-size:.68rem;color:var(--muted);margin-top:2px"
+               title="파일 무결성 확인용 해시">{{ e.sha256[:12] }}…</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 8 if can_delete else 7 }}" class="ug-empty">
+        {% if filt.level or filt.kind or filt.q %}조건에 맞는 자료가 없습니다.
+        {% elif not selected %}저장 등급이 지정돼 있지 않아 증거 영상을 남기지
+        않고 있습니다. 위에서 등급을 골라 주십시오.
+        {% else %}아직 수집된 증거 자료가 없습니다. 「{{ selected|join(' · ') }}」
+        등급 이벤트가 발생하면 여기에 쌓입니다.{% endif %}
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if can_delete and rows %}
+  <button class="ug-btn ug-btn--ghost" type="submit"
+          style="width:auto;padding:8px 16px;margin-top:12px;color:#ff9a9c"
+    >선택 삭제</button>
+  {% endif %}
+</div>
+</form>
+
+<p class="ug-note">증거 영상에는 <b>사람과 차량이 찍힙니다 — 개인정보입니다.</b>
+  내려받기와 삭제는 <a href="/admin/audit" style="color:inherit">감사 로그
+  (S-91)</a>에 남습니다. 이 자료를 기관 밖으로 제공하실 때는
+  <a href="/admin/disclosure" style="color:inherit">영상 반출 관리대장
+  (S-94)</a>에 반드시 기록하십시오.
+  <br>보존기간이 지난 자료는 위에서 정한 주기로 <b>자동 파기</b>되며, 그
+  사실도 감사 로그에 남습니다.</p>
+
+{# ===== 증거 자료 팝업 (S-88) =====================================
+   왜 만들었나
+     예전에는 클립이 **곧바로 내려받기**였다. 확인만 하려 해도 파일이 디스크에
+     남는다 — 영상은 개인정보라 **보려고 받은 파일이 그대로 방치**된다.
+
+   ★ 이벤트가 난 자리를 함께 표시한다
+     · 클립: 앞 구간(10초) 뒤가 **이벤트 순간**이다. 눈금으로 찍고 그 지점에서
+       재생을 시작한다
+     · 정지영상·클립 공통: 그 지점·도메인의 **감시 구역(ROI)** 을 겹쳐 그린다
+     · 2026-08-20 부터 **실제 탐지 상자**도 저장돼 있으면 함께 그린다 —
+       침수는 물 영역 경계, 인파는 그 이벤트를 일으킨 추적 상자, 노면은
+       손상 상자. **지어내지 않는다** — 없으면 화면이 「없다」고 말한다.
+
+   ⚠️ 2026-08-20 이전에 수집된 자료에는 상자가 없다. 그때는 화면이 「저장된
+      탐지 상자가 없습니다」라고 정직하게 적는다. #}
+<div id="ev-modal" class="modal hidden" role="dialog" aria-modal="true"
+     aria-labelledby="ev-title">
+  <div class="modalbox" style="max-width:1000px">
+    <div class="modalhead">
+      <span id="ev-title">증거 자료</span>
+      <span>
+        <a id="ev-dl" class="ug-btn ug-btn--ghost" href="#" download
+           style="width:auto;padding:5px 12px;font-size:.8rem;
+                  text-decoration:none">⬇ 내려받기</a>
+        <button type="button" onclick="evClose()">✕ 닫기</button>
+      </span>
+    </div>
+
+    <div id="ev-meta" class="ug-note" style="margin:0 0 8px"></div>
+
+    <div id="ev-stage" style="position:relative;background:#000;
+         border-radius:8px;overflow:hidden;display:flex;
+         align-items:center;justify-content:center;min-height:220px">
+      <img id="ev-img" alt="증거 정지영상"
+           style="max-width:100%;max-height:62vh;display:none">
+      <video id="ev-vid" controls playsinline
+             style="max-width:100%;max-height:62vh;display:none"></video>
+      {# ROI 오버레이. viewBox 를 원본 프레임 크기에 맞춰 좌표를 그대로 쓴다. #}
+      <svg id="ev-roi" preserveAspectRatio="none"
+           style="position:absolute;inset:0;width:100%;height:100%;
+                  pointer-events:none;display:none"></svg>
+      {# ★ 실제 탐지 상자 오버레이(2026-08-20). ROI 와 **별도 좌표계**다 —
+         상자를 남긴 프레임의 크기(frame_w/frame_h)가 ROI 설정 당시 프레임과
+         다를 수 있어, 각자 자기 viewBox 로 독립적으로 맞춘다. #}
+      <svg id="ev-box" preserveAspectRatio="none"
+           style="position:absolute;inset:0;width:100%;height:100%;
+                  pointer-events:none;display:none"></svg>
+    </div>
+
+    {# 클립 안에서 이벤트 순간이 어디인지. 영상 아래에 눈금으로 둔다. #}
+    <div id="ev-timeline" style="display:none;margin-top:8px">
+      <div style="position:relative;height:10px;border-radius:5px;
+                  background:var(--border)">
+        <i id="ev-mark" style="position:absolute;top:-4px;width:3px;height:18px;
+             background:#e5484d;border-radius:2px"></i>
+      </div>
+      <div style="display:flex;justify-content:space-between;
+                  font-size:.74rem;color:var(--muted);margin-top:4px">
+        <span>0초</span>
+        <span id="ev-mark-label" style="color:#e5484d;font-weight:700"></span>
+        <span id="ev-dur"></span>
+      </div>
+    </div>
+
+    <p id="ev-note" class="ug-note" style="margin-top:10px"></p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ===== 증거 자료 팝업 (S-88) ==========================================
+//
+// ★ 확인은 팝업에서, 내려받기는 필요할 때만.
+//    예전에는 클립이 곧바로 내려받기라 **보려고 받은 파일이 디스크에 방치**
+//    됐다. 영상은 개인정보다.
+//
+// ⚠️ 「보기」와 「내려받기」는 **감사 로그에 다른 코드로** 남는다. 화면에서
+//    확인한 것까지 「반출」로 적으면 대장이 노이즈로 가득 차 정작 밖으로 나간
+//    건을 못 찾는다(routes_evidence.py 참고).
+
+var EV_ROI_COLORS = {
+  road_roi: "#3fb950", low_roi: "#e5484d", lane_line: "#58a6ff",
+};
+var EV_ROI_NAMES = {
+  road_roi: "도로 ROI", low_roi: "저지대 ROI", lane_line: "침수 경계선",
+};
+
+function evClose() {
+  var m = document.getElementById("ev-modal");
+  var v = document.getElementById("ev-vid");
+  // ⚠️ 반드시 멈춘다. 닫아도 소리가 계속 나면 관제실에서 곤란하다.
+  try { v.pause(); v.removeAttribute("src"); v.load(); } catch (e) {}
+  document.getElementById("ev-img").removeAttribute("src");
+  m.classList.add("hidden");
+}
+
+function _evRoiSvg(roi) {
+  var svg = document.getElementById("ev-roi");
+  svg.innerHTML = "";
+  if (!roi || !roi.frame_width || !roi.frame_height) {
+    svg.style.display = "none";
+    return false;
+  }
+  svg.setAttribute("viewBox", "0 0 " + roi.frame_width + " " + roi.frame_height);
+  var shapes = roi.shapes || {};
+  var drew = false;
+  Object.keys(EV_ROI_COLORS).forEach(function (key) {
+    var pts = shapes[key];
+    if (!pts || !pts.length) return;
+    var flat = pts.map(function (p) { return p[0] + "," + p[1]; }).join(" ");
+    var el = document.createElementNS("http://www.w3.org/2000/svg",
+                                      key === "lane_line" ? "polyline" : "polygon");
+    el.setAttribute("points", flat);
+    el.setAttribute("fill", key === "lane_line" ? "none" : EV_ROI_COLORS[key] + "22");
+    el.setAttribute("stroke", EV_ROI_COLORS[key]);
+    el.setAttribute("stroke-width", "3");
+    svg.appendChild(el);
+    drew = true;
+  });
+  svg.style.display = drew ? "block" : "none";
+  return drew;
+}
+
+function _evBoxSvg(boxes, fw, fh) {
+  var svg = document.getElementById("ev-box");
+  svg.innerHTML = "";
+  if (!boxes || !boxes.length || !fw || !fh) {
+    svg.style.display = "none";
+    return false;
+  }
+  svg.setAttribute("viewBox", "0 0 " + fw + " " + fh);
+  boxes.forEach(function (b) {
+    var rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("x", b.x1); rect.setAttribute("y", b.y1);
+    rect.setAttribute("width", Math.max(b.x2 - b.x1, 1));
+    rect.setAttribute("height", Math.max(b.y2 - b.y1, 1));
+    rect.setAttribute("class", "ev-box-rect");
+    svg.appendChild(rect);
+    if (b.label) {
+      var txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      txt.setAttribute("x", b.x1);
+      txt.setAttribute("y", Math.max(b.y1 - 6, 12));
+      txt.setAttribute("class", "ev-box-label");
+      txt.textContent = b.label;
+      svg.appendChild(txt);
+    }
+  });
+  svg.style.display = "block";
+  return true;
+}
+
+
+function evOpen(id) {
+  var m = document.getElementById("ev-modal");
+  var img = document.getElementById("ev-img");
+  var vid = document.getElementById("ev-vid");
+  var tl = document.getElementById("ev-timeline");
+  var note = document.getElementById("ev-note");
+  var meta = document.getElementById("ev-meta");
+
+  img.style.display = "none";
+  vid.style.display = "none";
+  tl.style.display = "none";
+  note.textContent = "";
+  meta.textContent = "불러오는 중…";
+  document.getElementById("ev-dl").href = "/admin/evidence/" + id + "/file";
+  m.classList.remove("hidden");
+
+  fetch("/api/evidence/" + id + "/meta")
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (d) {
+      document.getElementById("ev-title").textContent =
+        "증거 자료 #" + d.id + " · " + d.domain_label +
+        (d.place_name ? " · " + d.place_name : "");
+      meta.innerHTML =
+        "<b>" + (d.event_type || "—") + "</b> · 등급 " + (d.level || "—") +
+        " · 지점 " + (d.camera_id || "—") +
+        " · 수집 " + (d.captured_at || "").replace("T", " ").slice(0, 19) +
+        (d.event_id ? ' · <a href="/events/' + d.event_id +
+                      '" style="color:var(--accent)">이벤트 #' + d.event_id + "</a>" : "");
+
+      var src = "/admin/evidence/" + id + "/file?inline=1";
+      var hasRoi = _evRoiSvg(d.roi);
+      var hasBox = _evBoxSvg(d.boxes, d.frame_w, d.frame_h);
+
+      if (d.kind === "image") {
+        img.src = src;
+        img.style.display = "block";
+      } else {
+        vid.src = src;
+        vid.style.display = "block";
+        // ★ 클립은 이벤트 시각 앞뒤로 잘린다. 앞 구간 길이가 곧 이벤트 순간이다.
+        var at = d.event_at_sec || 0;
+        var dur = d.duration_sec || 0;
+        if (dur > 0) {
+          tl.style.display = "block";
+          document.getElementById("ev-dur").textContent = dur + "초";
+          document.getElementById("ev-mark").style.left =
+            Math.max(0, Math.min(100, (at / dur) * 100)) + "%";
+          document.getElementById("ev-mark-label").textContent =
+            "▲ 이벤트 발생 " + at + "초";
+        }
+        // 이벤트 순간부터 보여 준다 — 20초를 처음부터 넘겨 볼 이유가 없다.
+        vid.addEventListener("loadedmetadata", function once() {
+          vid.removeEventListener("loadedmetadata", once);
+          try { if (at > 0) vid.currentTime = at; } catch (e) {}
+        });
+        // ⚠️ **2026-08-19 이전 클립은 mp4v 코덱**이라 이 환경 브라우저에서
+        //    재생되지 않는다(2026-08-20 실측 — MEDIA_ERR_SRC_NOT_SUPPORTED).
+        //    조용히 검은 화면만 보이면 고장으로 오해한다 — 원인과 대안을
+        //    바로 알려 준다.
+        vid.addEventListener("error", function () {
+          vid.style.display = "none";
+          note.innerHTML = "⚠ <b>이 클립은 예전 형식(mp4v)이라 이 화면에서 " +
+            "재생할 수 없습니다.</b> 2026-08-20 이후 수집분부터는 재생됩니다. " +
+            "우측 위 <b>「⬇ 내려받기」</b>로 받아 다른 재생 프로그램으로 " +
+            "확인하십시오." + (note.innerHTML ? "<br>" + note.innerHTML : "");
+        });
+      }
+
+      // ⚠️ 여기가 정직해야 하는 자리다 — 실제로 무엇을 그렸고 무엇을
+      //    못 그렸는지를 있는 그대로 적는다.
+      var boxWords = {
+        "flood": "빨간 상자는 <b>세그멘테이션이 실제로 물이라고 판정한 영역의 경계</b>입니다.",
+        "crowd": "빨간 상자는 <b>이 이벤트를 일으킨 그 사람의 실제 추적 상자</b>입니다.",
+        "road": "빨간 상자는 <b>모델이 실제로 찾은 손상 위치</b>입니다.",
+      };
+      var parts = [];
+      if (hasBox) {
+        parts.push((boxWords[d.domain] ||
+                    "빨간 상자는 <b>그 순간 실제로 관측된 위치</b>입니다.") +
+                   " 지어낸 값이 아니라 <b>수집 당시 그대로 저장된 값</b>입니다.");
+      } else {
+        parts.push("⚠ 이 자료에는 <b>저장된 탐지 상자가 없습니다.</b> 그 틱에 " +
+                   "아무것도 관측되지 않았거나(예: 물 없음), 이 자료를 상자 저장을 " +
+                   "시작하기 전에 수집했을 수 있습니다. <b>지어내지 않으려고 " +
+                   "표시하지 않았습니다.</b>");
+      }
+      if (hasRoi) {
+        parts.push("겹쳐 그린 색 구역은 <b>이 지점의 감시 구역(ROI)</b>입니다 — " +
+                   "<b>「여기서 났다」가 아니라 「이 구역을 보고 있었다」</b>는 뜻입니다.");
+      } else {
+        parts.push("⚠ 이 지점·도메인에 <b>설정된 감시 구역(ROI)이 없어</b> 구역을 " +
+                   "표시하지 못했습니다. 설정 › CCTV 관리(S-80)에서 지정할 수 있습니다.");
+      }
+      note.innerHTML = parts.join("<br>");
+    })
+    .catch(function () {
+      meta.textContent = "";
+      note.textContent = "자료 정보를 불러오지 못했습니다.";
+    });
+}
+
+// 열려 있을 때 Esc 로 닫는다.
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Escape") return;
+  var m = document.getElementById("ev-modal");
+  if (m && !m.classList.contains("hidden")) evClose();
+});
+</script>
+{% endblock %}

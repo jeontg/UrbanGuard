@@ -1,0 +1,485 @@
+{% extends "_layout.html" %}
+{% block title %}통합 상황판 — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>통합 상황판</h2>
+  <p>{{ now }} 기준 · 4개 도메인 현황을 한 화면에서 봅니다.</p>
+</div>
+
+<div class="ug-cards" style="margin-bottom:16px">
+  {% for d in domains %}
+  <section class="ug-card">
+    <h3>{{ d.label }}</h3>
+    {% if d.available %}
+      <p class="ug-stat" style="color:{{ d.color }}">{{ d.headline }}</p>
+      <p class="ug-stat-label">{{ d.detail }}</p>
+    {% else %}
+      <p class="ug-stat" style="color:var(--muted)">—</p>
+      <p class="ug-stat-label">{{ d.detail }}</p>
+    {% endif %}
+    <p style="margin:14px 0 0">
+      <a href="{{ d.href }}" style="color:var(--accent);text-decoration:none;
+         font-size:.86rem;font-weight:700">상세 보기 →</a></p>
+  </section>
+  {% endfor %}
+</div>
+
+<div class="ug-cards ug-board" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+     margin-bottom:16px">
+  {# 기상. 침수 위험도의 선행 지표이자 노면 열화의 주요 입력이라 관제 화면에
+     함께 둔다. 못 가져와도 상황판은 그대로 뜬다. #}
+  <section class="ug-card" style="grid-column:1/-1;padding:14px 16px">
+    <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 18px">
+      <b style="font-size:.92rem">기상</b>
+      {% if weather.available %}
+        {% for name, val in weather.labels.items() %}
+        <span style="font-size:.86rem">
+          <span style="color:var(--muted);font-size:.78rem">{{ name }}</span>
+          <b style="margin-left:4px
+             {% if name == '1시간 강수량' and weather.rain_mm %};color:#6cb6ff{% endif %}">
+            {{ val }}</b>
+        </span>
+        {% endfor %}
+        <span style="margin-left:auto;font-size:.74rem;color:var(--muted)">
+          {{ weather.place }} 기준 · {{ weather.base }}</span>
+      {% else %}
+        <span class="ug-badge ug-badge--off">미연계</span>
+        <span style="font-size:.78rem;color:var(--muted)">{{ weather.note }}</span>
+      {% endif %}
+    </div>
+    {% if weather.available %}
+    {# 도메인마다 보는 값이 다르다. 무엇을 왜 보는지 함께 적어야 숫자가 뜻을 갖는다. #}
+    <div class="ug-cards" style="--ug-gap:10px;margin-top:12px;
+         grid-template-columns:repeat(auto-fit,minmax(215px,1fr))">
+      {% for d in weather.domains %}
+      <div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px">
+        <div style="font-size:.8rem;font-weight:700;margin-bottom:5px">{{ d.label }}</div>
+        {% if d.rows %}
+        <div style="display:flex;flex-wrap:wrap;gap:3px 12px">
+          {% for it in d.rows %}
+          <span style="font-size:.78rem">
+            <span style="color:var(--muted);font-size:.72rem">{{ it.label }}</span>
+            <b style="margin-left:3px">{{ it.text }}</b></span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <span style="font-size:.74rem;color:var(--muted)">관측된 항목 없음</span>
+        {% endif %}
+        <p class="ug-note" style="margin:6px 0 0;font-size:.7rem">{{ d.why }}</p>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if weather.partial %}
+    <p class="ug-note" style="margin:8px 0 0;font-size:.72rem;color:#e8c35c">
+      ⚠ 일부만 받았습니다 — {{ weather.partial | join(" / ") }}
+    </p>
+    {% endif %}
+    {% if weather.missing %}
+    <p class="ug-note" style="margin:6px 0 0;font-size:.72rem">
+      노면 예측 입력 중 아직 못 채우는 항목 — {{ weather.missing | join(" · ") }}
+    </p>
+    {% endif %}
+    {% endif %}
+  </section>
+
+  <section class="ug-card">
+    <h3>감시 지점
+      <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+        {% if region_sel %}{{ region_shown }} / {{ region_total }}개소
+        {% else %}{{ map_points|length }}개소{% endif %}</span>
+    </h3>
+
+    {# 지역 필터. 거르는 것은 지도뿐 — 이벤트 큐는 전 지역을 그대로 보여 준다. #}
+    <form method="get" action="/" style="display:flex;flex-wrap:wrap;gap:6px;
+          align-items:center;margin-bottom:10px">
+      <select name="region" onchange="this.form.submit()"
+              style="padding:7px 9px;background:var(--bg);color:var(--text);
+                     border:1px solid var(--border);border-radius:8px;
+                     font-size:.8rem;max-width:100%">
+        <option value="">전체 지역</option>
+        {% for r in region_rows %}
+        <option value="{{ r.key }}" {% if r.key == region_sel %}selected{% endif %}>
+          {{ r.label }} ({{ r.count }})</option>
+        {% endfor %}
+      </select>
+      {% if region_sel %}
+      <select name="sigungu" onchange="this.form.submit()"
+              style="padding:7px 9px;background:var(--bg);color:var(--text);
+                     border:1px solid var(--border);border-radius:8px;
+                     font-size:.8rem;max-width:100%">
+        <option value="">구·군 전체</option>
+        {% for r in region_rows if r.key == region_sel %}
+          {% for name, n in r.sigungu %}
+          <option value="{% if name != '구·군 미지정' %}{{ name }}{% endif %}"
+            {% if name == sigungu_sel %}selected{% endif %}>{{ name }} ({{ n }})</option>
+          {% endfor %}
+        {% endfor %}
+      </select>
+      <a class="ug-btn ug-btn--ghost" href="/"
+         style="padding:6px 10px;font-size:.76rem">전체 보기</a>
+      {% endif %}
+    </form>
+
+    {% if region_sel and not map_points %}
+    <p class="ug-note" style="margin:0 0 10px">
+      이 지역에는 표시할 지점이 없습니다. 「전체 보기」로 돌아가세요.
+    </p>
+    {% endif %}
+    {% if map_points %}
+    {% if map_tile_url %}
+    {# 배경지도. 타일을 못 받으면 아래 배치 도식으로 되돌린다(ugmap.js onFail). #}
+    <div id="ug-basemap" role="img" aria-label="감시 지점 지도"></div>
+    {% endif %}
+    <div class="ug-map" id="ug-schematic"
+         {% if map_tile_url %}hidden{% endif %}>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img"
+           aria-label="감시 지점 위치 도식">
+        <defs>
+          <pattern id="ug-grid" width="10" height="10" patternUnits="userSpaceOnUse">
+            <path d="M 10 0 L 0 0 0 10" fill="none"
+                  stroke="var(--border)" stroke-width="0.25"/>
+          </pattern>
+        </defs>
+        <rect width="100" height="100" fill="url(#ug-grid)"/>
+      </svg>
+      {# 마커는 SVG 밖에 두어야 글자 크기가 뷰포트 왜곡을 받지 않는다 #}
+      {% for p in map_points %}
+      <a class="ug-pin{% if p.alert %} ug-pin--alert{% endif %}"
+         style="left:{{ p.x }}%;top:{{ p.y }}%"
+         {% if p.event_id %}href="/events/{{ p.event_id }}"{% else %}href="/events"{% endif %}
+         data-domain="{{ p.domain or 'none' }}"
+         title="{{ p.name }} · {{ p.level or '정상' }}{% if p.domain_label %} ({{ p.domain_label }}){% endif %}">
+        <span class="ug-pin-dot" style="background:{{ p.color }}"></span>
+        <span class="ug-pin-label">{{ p.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="ug-map-legend">
+      {% for label, color in [("심각","#e5484d"),("경계","#e8843b"),
+                              ("주의","#d4a017"),("정상","#3fb950")] %}
+      <span><i style="background:{{ color }}"></i>{{ label }}</span>
+      {% endfor %}
+    </div>
+    <p class="ug-note" style="margin-top:8px" id="ug-map-note">
+      {% if map_tile_url %}외부 배경지도 위에 지점을 표시합니다. 끌어서 이동,
+      휠·버튼으로 확대·축소할 수 있습니다.
+      {% else %}위경도 기반 배치 도식입니다. 배경지도를 쓰려면
+      <a href="/settings/org" style="color:var(--accent)">기관·화면 설정</a>에서
+      타일 주소를 넣으세요.{% endif %}
+    </p>
+    {% else %}
+    <p class="ug-empty">좌표가 설정된 감시 지점이 없습니다.</p>
+    {% endif %}
+
+    {# 지역 현황 — 어느 지역에 몇 대가 있는지 한눈에. 눌러서 바로 거른다. #}
+    {% if region_rows %}
+    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">지역 현황</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        {% for r in region_rows %}
+        <div>
+          <a href="/?region={{ r.key }}" style="text-decoration:none;
+             display:inline-flex;align-items:baseline;gap:6px;margin-bottom:4px">
+            <b style="font-size:.86rem;color:{% if r.key == region_sel %}var(--accent){% else %}var(--text){% endif %}">
+              {{ r.label }}</b>
+            <span class="ug-badge">{{ r.count }}대</span>
+          </a>
+          <div style="display:flex;flex-wrap:wrap;gap:4px">
+            {% for name, n in r.sigungu %}
+            <a href="/?region={{ r.key }}{% if name != '구·군 미지정' %}&sigungu={{ name }}{% endif %}"
+               class="ug-badge {% if name == '구·군 미지정' %}ug-badge--off{% endif %}"
+               style="font-size:.68rem;text-decoration:none">{{ name }} {{ n }}</a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="ug-card">
+    <h3>이벤트 큐
+      <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+        미처리 {{ ev_counts.open }} · 처리중 {{ ev_counts.progress }}</span>
+      <a href="/events" style="float:right;font-size:.82rem;color:var(--accent);
+         text-decoration:none">전체 보기 →</a>
+    </h3>
+    <div class="ug-tablewrap">
+      <table class="ug-table" style="min-width:420px">
+        <thead><tr><th>지점</th><th>도메인</th><th>등급</th>
+          <th>상태</th><th>경과</th><th></th></tr></thead>
+        <tbody>
+        {% for s in situations %}
+        <tr>
+          <td>{{ s.place }}</td>
+          <td>{{ s.domain }}</td>
+          <td><span class="ug-badge {{ s.badge }}">{{ s.level }}</span></td>
+          <td>{{ s.status }}</td>
+          <td>{{ s.elapsed }}</td>
+          <td><a href="/events/{{ s.id }}" style="color:var(--accent);
+                 text-decoration:none;font-weight:700">조치 →</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="ug-empty">진행 중인 이벤트가 없습니다.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {# ★ 선행 경고 — 상류에서 사건이 열려 있는데 하류는 아직 조용한 지점.
+     경남 제안요청서 기대효과 「경계를 넘나드는 재난을 연속 추적」이 실제로
+     요구하는 것. 상·하류를 지정하지 않았으면 이 카드는 안 보인다. #}
+  {% if flow_warnings %}
+  <section class="ug-card" style="border-color:#e8590c">
+    <h3 style="color:#e8590c">선행 경고
+      <span style="font-weight:400;font-size:.82rem;color:var(--muted)">
+        {{ flow_warnings|length }}곳</span></h3>
+    <p class="ug-note" style="margin:6px 0 10px">
+      상류에서 사건이 진행 중입니다. <b>아래 지점이 다음 차례일 수 있습니다.</b>
+    </p>
+    <ul style="list-style:none;padding:0;margin:0">
+      {% for w in flow_warnings %}
+      <li style="padding:8px 0;border-top:1px solid var(--border)">
+        <b>{{ w.target_name }}</b>
+        <span style="font-size:.78rem;color:var(--muted)">— 아직 조용함</span><br>
+        <span style="font-size:.8rem;color:var(--muted)">상류
+          <a href="/events/{{ w.event_id }}" style="color:var(--accent);
+             text-decoration:none">{{ w.source_name }}</a>
+          「{{ w.source_level }}」 진행 중</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="ug-card">
+    <h3>대기 중인 업무</h3>
+    {% if pending_notifications %}
+      <p class="ug-stat" style="color:var(--orange, #ef6c00)">{{ pending_notifications }}건</p>
+      <p class="ug-stat-label">승인 대기 중인 알림 발송</p>
+      <p style="margin:14px 0 0"><a href="/notify" style="color:var(--accent);
+         text-decoration:none;font-size:.86rem;font-weight:700">승인 화면 →</a></p>
+    {% else %}
+      <p class="ug-empty" style="padding:8px 0">대기 중인 승인 업무가 없습니다.</p>
+    {% endif %}
+    <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+    <p class="ug-stat-label" style="margin:0 0 6px">내 권한</p>
+    <p style="margin:0;font-size:.88rem">{{ role_label }}
+      {% if user.domain_set %}· 담당 {{ user.domain_set|sort|join(", ") }}{% endif %}</p>
+  </section>
+
+  {# 서비스 상태·재기동. 시스템관리자에게만 보인다.
+
+     왜 상황판에 두는가
+       .env(기상청 API 키 등)는 프로세스가 뜰 때 한 번만 읽는다. 바꾸면
+       재기동해야 반영되는데, 그러자고 서버에 붙어 명령을 치게 할 수는 없다.
+
+     왜 이렇게 요란한가
+       이 버튼은 이 제품에서 가장 파괴적인 조작이다. 누르면 침수·인파·노면
+       상시 탐지가 모두 멎는다. 무엇이 멎는지 숫자로 보여 주지 않으면
+       「새로고침 같은 것」으로 읽힌다. #}
+  {% if can_restart_service %}
+  <section class="ug-card" id="svc-card">
+    <h3>서비스 상태</h3>
+    <div class="ug-tablewrap">
+      <table class="ug-table" style="min-width:0">
+        <tbody>
+          <tr><th style="width:110px">가동 시간</th>
+            <td id="svc-uptime">{{ svc.uptime_text }}</td></tr>
+          {# ⚠️ 2026-09-02 실사용 중 발견 — 라벨이 그냥 "상시 탐지"라
+             "지금 시스템 전체에 상시 탐지가 몇 개 도는가"로 오해하기
+             쉬웠다(관리자가 실제로 그렇게 물어봄). 이 값은 그게 아니라
+             "이 재기동 버튼을 누르면 이 프로세스 안에서 멎는 개수"다
+             (2026-08-31 Phase 4 이후 플랫폼-쉘 자신은 상시 탐지 워처를
+             하나도 안 가져 **항상 0** — `main.py::_watcher_count()`
+             docstring 참고, 도메인 4개가 실제로 도는지는 「서비스
+             관리」 화면에서 봐야 한다). 라벨을 그 뜻이 드러나게 바꾼다 —
+             `svc-watchers`의 textContent 자체는 아래 재기동 확인창
+             문구에 그대로 꿰이므로(360행대) 숫자만 남기고 설명은
+             title 툴팁으로 뺀다. #}
+          <tr><th title="재기동 버튼을 누르면 이 프로세스(플랫폼-쉘) 안에서
+                멎는 상시 탐지 수입니다. 침수·인파관리·노면관리·교통위험은
+                2026-08-31부터 별도 프로세스라 여기 포함되지 않습니다 —
+                그 상태는 「서비스 관리」 화면에서 확인하십시오.">
+              재기동 영향</th>
+            <td id="svc-watchers">{{ svc.watchers }}개 동작 중</td></tr>
+          {# 운영체제와 감시 방식은 S-87 에서 정한다. 리눅스·윈도우 양쪽에
+             납품되므로 「지금 어느 환경인가」가 화면에 보여야 한다. #}
+          <tr><th>운영체제</th>
+            <td>{{ svc.profile.os_label if svc.profile else "—" }}
+              {% if svc.profile and svc.profile.os_mismatch %}
+              <span class="ug-badge ug-badge--warn"
+                    title="설정과 실제가 다릅니다">설정과 다름</span>
+              {% endif %}</td></tr>
+          <tr><th>재기동 방식</th>
+            <td>{% if svc.profile %}
+              {{ svc.profile.strategy_label }}
+              {% if svc.profile.detected == svc.profile.strategy %}
+              <span class="ug-badge ug-badge--on">확인됨</span>
+              {% elif svc.profile.detected %}
+              <span class="ug-badge ug-badge--crit">실제와 불일치</span>
+              {% elif svc.profile.ack %}
+              <span class="ug-badge ug-badge--off">관리자 확인</span>
+              {% else %}
+              <span class="ug-badge ug-badge--warn">확인 불가</span>
+              {% endif %}
+            {% else %}—{% endif %}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p id="svc-msg" style="margin:12px 0 0;font-size:.85rem;display:none"></p>
+
+    {% if svc.can_restart %}
+    <button class="ug-btn" type="button" id="svc-restart"
+            style="width:auto;padding:9px 18px;margin-top:12px">
+      서비스 재기동</button>
+    <p class="ug-note" style="margin-top:10px">설정 파일(<code>.env</code>)을
+      고친 뒤에만 필요합니다. 화면에서 바꾸는 설정(지점·임계값·알림규칙·모델)은
+      <b>재기동 없이 바로 반영</b>됩니다.</p>
+    {% else %}
+    <button class="ug-btn ug-btn--ghost" type="button" disabled
+            style="width:auto;padding:9px 18px;margin-top:12px;opacity:.5;
+                   cursor:not-allowed">서비스 재기동</button>
+    <p class="ug-note" style="margin-top:10px;color:#ffcf7a">
+      {{ svc.reason }}
+      <a href="/settings/server" style="color:var(--accent)">서버 운영 (S-87) →</a></p>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if can_restart_service and svc.can_restart %}
+<script>
+// 서비스 재기동. 누르면 이 페이지를 서빙하던 프로세스가 죽으므로,
+// **응답을 받은 뒤 스스로 되살아나는지까지 확인해 준다.** 확인해 주지 않으면
+// 운영자는 하얀 화면을 보고 자기가 서비스를 망가뜨렸다고 생각한다.
+(function () {
+  var btn = document.getElementById('svc-restart');
+  var msg = document.getElementById('svc-msg');
+  if (!btn) { return; }
+
+  function say(text, color) {
+    msg.textContent = text;
+    msg.style.color = color || 'var(--muted)';
+    msg.style.display = '';
+  }
+
+  btn.addEventListener('click', function () {
+    var n = document.getElementById('svc-watchers').textContent;
+    if (!confirm(
+        '서비스를 재기동합니다.\n\n' +
+        '· 상시 탐지(' + n + ')가 10~30초 동안 멎습니다\n' +
+        '· 집중 감시(S-44)를 켜 두셨다면 함께 꺼집니다\n' +
+        '· 화면을 보고 있는 다른 근무자도 잠시 끊깁니다\n\n' +
+        '설정 파일을 고친 것이 아니라면 재기동할 이유가 없습니다. 진행할까요?')) {
+      return;
+    }
+    btn.disabled = true;
+    btn.style.opacity = '.5';
+    say('재기동을 요청하는 중…');
+
+    fetch('/api/service/restart', {
+      method: 'POST', headers: { 'Accept': 'application/json' }
+    }).then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+    }).then(function (res) {
+      if (!res.ok || !res.d.ok) {
+        say(res.d.error || '재기동할 수 없습니다.', '#ff9a9c');
+        btn.disabled = false;
+        btn.style.opacity = '';
+        return;
+      }
+      say(res.d.message + ' 다시 뜰 때까지 기다리는 중…');
+      waitForBack(0);
+    }).catch(function () {
+      // 응답을 못 받았어도 재기동은 시작됐을 수 있다. 기다려 본다.
+      say('요청은 보냈습니다. 다시 뜰 때까지 기다리는 중…');
+      waitForBack(0);
+    });
+  });
+
+  // 프로세스가 다시 뜰 때까지 확인한다. 60초 = 2초 x 30회.
+  function waitForBack(tries) {
+    if (tries > 30) {
+      say('60초가 지나도 응답이 없습니다. 서버 콘솔과 data/logs/serve.log 를 ' +
+          '확인해 주십시오.', '#ff9a9c');
+      return;
+    }
+    setTimeout(function () {
+      fetch('/api/service/state', { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (s) {
+          // 가동 시간이 짧아졌으면 새 프로세스다. 옛 프로세스가 아직
+          // 응답하는 동안 「다 됐다」고 하면 안 된다.
+          if (s.uptime_sec < 60 && !s.pending) {
+            say('재기동이 끝났습니다. 화면을 새로 불러옵니다…', '#8ee89f');
+            setTimeout(function () { location.reload(); }, 800);
+          } else {
+            waitForBack(tries + 1);
+          }
+        })
+        .catch(function () { waitForBack(tries + 1); });
+    }, 2000);
+  }
+})();
+</script>
+{% endif %}
+
+{% if map_tile_url and map_points %}
+<script src="/static/ugmap.js"></script>
+<script>
+// 배경지도. **타일을 못 받으면 배치 도식으로 되돌린다** — 빈 회색 상자를
+// 보여 주면 지도가 고장인지 지점이 없는지 구분되지 않는다.
+(function () {
+  var el = document.getElementById('ug-basemap');
+  var fallback = document.getElementById('ug-schematic');
+  if (!el || typeof UGMap === 'undefined') {
+    if (fallback) { fallback.hidden = false; }
+    return;
+  }
+  var points = {{ map_points | tojson }};
+  function toFallback() {
+    if (map && map.destroy) { map.destroy(); }
+    el.remove();
+    if (fallback) { fallback.hidden = false; }
+    var note = document.getElementById('ug-map-note');
+    if (note) {
+      note.textContent = '배경지도를 불러오지 못해 배치 도식으로 표시합니다. '
+        + '관제망에서 외부 접속이 막혀 있거나 타일 주소가 잘못되었을 수 있습니다.';
+    }
+  }
+  var map;
+  try {
+    map = new UGMap(el, {
+      tileUrl: {{ map_tile_url | tojson }},
+      attribution: {{ map_attribution | tojson }},
+      maxZoom: parseInt({{ map_max_zoom | tojson }}, 10) || 18,
+      points: points.map(function (p) {
+        return {
+          lat: p.lat, lng: p.lng, color: p.color,
+          title: p.name + ' · ' + (p.level || '정상'),
+          href: p.event_id ? ('/events/' + p.event_id) : '/events'
+        };
+      }),
+      onFail: toFallback
+    });
+  } catch (e) {
+    toFallback();
+    return;
+  }
+  // 창 크기가 바뀌면 다시 그린다. 반응형에서 타일이 잘린 채 남는다.
+  var timer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(timer);
+    timer = setTimeout(function () { map.render(); }, 150);
+  });
+}());
+</script>
+{% endif %}
+{% endblock %}

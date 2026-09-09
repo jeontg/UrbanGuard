@@ -1,0 +1,266 @@
+{# S-86 디지털 SOP — 도메인·등급별 조치 단계.
+
+   이 화면이 하는 일
+     이벤트 상세(S-03)에 뜨는 체크리스트를 여기서 정한다. 화면이 「경계입니다」
+     까지만 말하고 그다음을 근무자 기억에 맡기던 것을, 기관 매뉴얼로 대신한다.
+
+   「기본안 n/n」
+     제품이 심은 뼈대가 몇 개 남아 있는지 맨 위에 띄운다. 숫자로 보여 주지
+     않으면 아무도 바꾸지 않은 채 납품된다. 단계를 한 번이라도 고치면
+     「기본안」 표시가 떨어진다.
+
+   막지 않고 경고한다
+     필수 단계가 다 안 찍혀도 종결을 막지 않는다. 막으면 사람은 아무 칸이나
+     찍고 넘어간다. 미이행 건수만 이벤트 화면에 남긴다. #}
+{% extends "_layout.html" %}
+{% block title %}디지털 SOP — {{ org_name }} UrbanGuard{% endblock %}
+{% block content %}
+<div class="ug-page-head">
+  <h2>디지털 SOP</h2>
+  <p>이벤트 등급이 올랐을 때 <b>무엇을 순서대로 해야 하는지</b>를 정합니다.
+    여기 적은 단계가 이벤트 상세 화면에 체크리스트로 나타납니다.</p>
+</div>
+
+{% if notice %}<p class="ug-error" style="background:rgba(63,185,80,.14);
+  border-color:rgba(63,185,80,.4);color:#8ee89f" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="ug-error" role="alert">{{ error }}</p>{% endif %}
+
+{% if stock %}
+<p class="ug-error" style="background:rgba(210,153,34,.14);
+   border-color:rgba(210,153,34,.45);color:#ffcf7a">
+  <b>기본안 {{ stock }}/{{ total }}단계</b> — 제품이 심어 둔 뼈대가 그대로
+  남아 있습니다. 이 내용은 <b>어느 기관의 행동매뉴얼도 아닙니다.</b>
+  지자체마다 통제 기준·통보 계통·전담 부서가 달라 제품이 정할 수 없습니다.
+  도입 기관의 실제 매뉴얼로 바꿔 주십시오 — 한 번이라도 고치면 이 표시가
+  사라집니다.</p>
+{% elif total %}
+<p class="ug-note" style="margin-top:0">전체 {{ total }}단계가 모두 기관 내용으로
+  작성돼 있습니다.</p>
+{% endif %}
+
+{% if can_edit %}
+<!-- 등록 · 수정 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <h3 id="form-title">단계 등록 · 수정</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:0 0 12px">
+    도메인·등급을 「{{ any_label }}」로 두면 모든 이벤트에 붙습니다. 등급은
+    <b>정확히 일치</b>할 때만 나타납니다 — 「경계」 단계는 경계 이벤트에만 뜨고,
+    등급이 오르면 상위 단계가 새로 뜹니다.</p>
+  <form method="post" action="/settings/sop/save" id="sop-form">
+    <input type="hidden" name="step_id" id="s-id" value="{{ form.get('step_id', '') }}">
+    <div class="ug-cards" style="--ug-gap:12px">
+      <div class="ug-field"><label for="s-domain">도메인</label>
+        <select id="s-domain" name="domain" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          <option value="" {% if not form.get('domain') %}selected{% endif %}
+            >{{ any_label }}</option>
+          {% for v, l in domains %}
+          <option value="{{ v }}" {% if form.get('domain') == v %}selected{% endif %}
+            >{{ l }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="ug-field"><label for="s-level">등급</label>
+        <select id="s-level" name="level" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          <option value="" {% if not form.get('level') %}selected{% endif %}
+            >{{ any_label }}</option>
+          {% for lv in levels %}
+          <option value="{{ lv }}" {% if form.get('level') == lv %}selected{% endif %}
+            >{{ lv }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="ug-field"><label for="s-seq">순서</label>
+        <input id="s-seq" name="seq" type="number" min="0" step="10"
+               value="{{ form.get('seq', '0') }}"></div>
+      <div class="ug-field"><label for="s-req">필수 여부</label>
+        <select id="s-req" name="required" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          <option value="1" {% if form.get('required', '1') == '1' %}selected{% endif %}
+            >필수 (미이행 시 경고)</option>
+          <option value="0" {% if form.get('required') == '0' %}selected{% endif %}
+            >권장</option>
+        </select></div>
+      <div class="ug-field"><label for="s-act">사용 여부</label>
+        <select id="s-act" name="is_active" style="width:100%;padding:11px 12px;
+                background:var(--bg);color:var(--text);border:1px solid var(--border);
+                border-radius:8px">
+          <option value="1" {% if form.get('is_active', '1') == '1' %}selected{% endif %}
+            >사용</option>
+          <option value="0" {% if form.get('is_active') == '0' %}selected{% endif %}
+            >사용 안 함</option>
+        </select></div>
+    </div>
+    <div class="ug-field"><label for="s-title">단계 제목</label>
+      <input id="s-title" name="title" required autocomplete="off"
+             placeholder="무엇을 하는지 한 줄로 (예: 소관 부서 통보)"
+             value="{{ form.get('title', '') }}"></div>
+    <div class="ug-field"><label for="s-detail">설명</label>
+      <textarea id="s-detail" name="detail" rows="3"
+                placeholder="어떻게 하는지. 야간에 혼자 근무하는 사람이 읽고 바로 따라 할 수 있게 적습니다."
+                style="width:100%;padding:11px 12px;background:var(--bg);
+                       color:var(--text);border:1px solid var(--border);
+                       border-radius:8px;font:inherit">{{ form.get('detail', '') }}</textarea></div>
+    <button class="ug-btn" type="submit" id="s-submit"
+            style="width:auto;padding:10px 20px">저장</button>
+    <button class="ug-btn ug-btn--ghost" type="button" id="s-cancel"
+            style="width:auto;padding:10px 20px;display:none">새로 등록</button>
+  </form>
+</div>
+{% endif %}
+
+<!-- 검색 -->
+<div class="ug-card" style="margin-bottom:16px">
+  <form method="get" action="/settings/sop"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div class="ug-field" style="margin:0;min-width:170px;flex:1 1 170px">
+      <label for="f-domain">도메인</label>
+      <select id="f-domain" name="domain" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전부 보기</option>
+        {% for v, l in domains %}
+        <option value="{{ v }}" {% if filt.domain == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ug-field" style="margin:0;min-width:150px;flex:1 1 150px">
+      <label for="f-level">등급</label>
+      <select id="f-level" name="level" style="width:100%;padding:11px 12px;
+              background:var(--bg);color:var(--text);border:1px solid var(--border);
+              border-radius:8px">
+        <option value="">전부 보기</option>
+        {% for lv in levels %}
+        <option value="{{ lv }}" {% if filt.level == lv %}selected{% endif %}>{{ lv }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="ug-btn" type="submit" style="width:auto;padding:11px 22px">조회</button>
+    <a class="ug-btn ug-btn--ghost" href="/settings/sop"
+       style="width:auto;padding:11px 18px;text-decoration:none;text-align:center">
+      조건 해제</a>
+    {% if can_edit %}
+    <form method="post" action="/settings/sop/seed" style="margin-left:auto"
+          onsubmit="return confirm('빠진 기본안 단계를 채웁니다. 이미 고쳐 둔 단계는 그대로 둡니다. 진행할까요?')">
+      <button class="ug-btn ug-btn--ghost" type="submit"
+              style="width:auto;padding:11px 18px">기본안 채우기</button>
+    </form>
+    {% endif %}
+  </form>
+</div>
+
+<!-- 목록 -->
+<div class="ug-card">
+  <h3>등록된 단계 ({{ rows|length }}개)</h3>
+  <div class="ug-tablewrap">
+    <table class="ug-table">
+      <thead><tr>
+        <th>적용 범위</th><th style="text-align:right">순서</th>
+        <th>단계 / 설명</th><th>구분</th>
+        {% if can_edit %}<th>관리</th>{% endif %}
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr{% if not r.is_active %} style="opacity:.5"{% endif %}>
+        <td style="white-space:nowrap;font-size:.85rem">
+          {% set dl = domains | selectattr('0', 'equalto', r.domain) | first %}
+          <div>{{ dl[1] if dl else any_label }}</div>
+          <div style="color:var(--muted)">{{ r.level or any_label }}</div>
+        </td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;
+                   color:var(--muted)">{{ r.seq }}</td>
+        <td style="white-space:normal;max-width:520px">
+          <b>{{ r.title }}</b>
+          {% if not r.required %}
+          <span class="ug-badge ug-badge--off" style="margin-left:6px">권장</span>{% endif %}
+          {% if not r.is_active %}
+          <span class="ug-badge ug-badge--off" style="margin-left:6px">사용 안 함</span>{% endif %}
+          {% if r.detail %}
+          <div style="margin-top:5px;font-size:.84rem;color:var(--muted);
+                      line-height:1.55;white-space:pre-wrap">{{ r.detail }}</div>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          {% if r.builtin %}<span class="ug-badge ug-badge--warn">기본안</span>
+          {% else %}<span class="ug-badge ug-badge--on">기관 작성</span>{% endif %}
+          {% if r.updated_by and r.updated_by != "system" %}
+          <div style="font-size:.72rem;color:var(--muted);margin-top:3px">
+            {{ r.updated_by }}</div>{% endif %}
+        </td>
+        {% if can_edit %}
+        <td style="white-space:nowrap">
+          <button class="ug-btn ug-btn--ghost" type="button"
+                  style="width:auto;padding:6px 12px;font-size:.8rem"
+                  data-edit="{{ r.id }}" data-domain="{{ r.domain }}"
+                  data-level="{{ r.level }}" data-seq="{{ r.seq }}"
+                  data-req="{{ '1' if r.required else '0' }}"
+                  data-active="{{ '1' if r.is_active else '0' }}"
+                  data-title="{{ r.title }}"
+                  data-detail="{{ r.detail }}">수정</button>
+          <form method="post" action="/settings/sop/delete" style="display:inline"
+                onsubmit="return confirm('「{{ r.title }}」 단계를 삭제합니다. 이미 찍힌 이행 기록은 남습니다. 진행할까요?')">
+            <input type="hidden" name="step_id" value="{{ r.id }}">
+            <button class="ug-btn ug-btn--ghost" type="submit"
+                    style="width:auto;padding:6px 12px;font-size:.8rem;
+                           color:#ff9a9c">삭제</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 5 if can_edit else 4 }}" class="ug-empty">
+        {% if filt.domain or filt.level %}조건에 맞는 단계가 없습니다.
+        {% else %}등록된 단계가 없습니다. 「기본안 채우기」로 뼈대를 만든 뒤
+        기관 매뉴얼에 맞게 고치십시오.{% endif %}
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<p class="ug-note">필수 단계가 다 찍히지 않아도 <b>이벤트 종결을 막지는
+  않습니다</b>. 현장에는 규정대로 못 하는 상황이 실제로 있고, 막으면 사람은
+  아무 칸이나 찍고 넘어가기 때문입니다. 대신 「필수 n건 미이행」이 이벤트
+  화면과 조치 이력에 남습니다.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 「수정」을 누르면 위 폼에 값을 채운다. 화면을 옮기지 않고 그 자리에서 고칠
+// 수 있어야, 기본안을 실제로 기관 매뉴얼로 바꾸게 된다.
+(function () {
+  var form = document.getElementById('sop-form');
+  if (!form) { return; }
+  var title = document.getElementById('form-title');
+  var cancel = document.getElementById('s-cancel');
+
+  document.querySelectorAll('button[data-edit]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var d = btn.dataset;
+      form.step_id.value = d.edit;
+      form.domain.value = d.domain;
+      form.level.value = d.level;
+      form.seq.value = d.seq;
+      form.required.value = d.req;
+      form.is_active.value = d.active;
+      form.title.value = d.title;
+      form.detail.value = d.detail;
+      title.textContent = d.edit + '번 단계 수정';
+      cancel.style.display = '';
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      form.title.focus();
+    });
+  });
+
+  cancel.addEventListener('click', function () {
+    form.reset();
+    form.step_id.value = '';
+    title.textContent = '단계 등록 · 수정';
+    cancel.style.display = 'none';
+  });
+})();
+</script>
+{% endblock %}

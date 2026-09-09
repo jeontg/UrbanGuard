@@ -112,6 +112,49 @@ def load_roi_config(path: str | Path) -> RoiConfig:
         return RoiConfig.from_dict(json.load(fh))
 
 
+def load_roi_for_camera(camera_id: str, domain: str, *,
+                        fallback_path: str | Path | None = None) -> RoiConfig:
+    """DB(``camera_rois``)를 우선으로 이 카메라의 ROI 를 읽는다.
+
+    ⚠️ **왜 필요한가** (2026-08-22 전수점검) — 웹 ROI 편집기(S-81)는
+    DB(``camera_rois``)에만 저장하는데, 침수 상시 탐지 파이프라인
+    (``service/runner.py``)은 그동안 이 함수 없이 ``configs/roi/*.json``
+    파일만 읽었다. 그 결과 웹에서 ROI 를 새로 그리거나 고쳐도 실제 판정에는
+    반영되지 않는 상태가 있었다(``/api/roi/{block_id}`` 화면 표시용
+    엔드포인트만 DB를 먼저 보고 있었다 — 이 함수는 그 로직을 판정 쪽에서도
+    쓸 수 있게 뽑아낸 것이다).
+
+    현재는 ``flood`` 도메인만 지원한다(``core.cameras.to_roi_config_dict()``
+    가 flood 전용 변환기라서 — 교통·노면 ROI 연동은 별도 경로를 쓴다,
+    ``traffic_tracker.py``/``road/live_analyzer.py`` 참고).
+
+    DB에도 파일에도 없으면 빈 :class:`RoiConfig` 를 돌려준다 — "판정이
+    멈추는 것보다 ROI 없이(=필터 없이) 도는 것이 낫다"는 이 코드베이스의
+    일관된 원칙(``scale_polygons`` 등)과 같다.
+    """
+    if domain == "flood":
+        try:
+            from ..core import cameras as _cams
+            from ..core.db import get_session
+            from ..core.roles import Domain
+
+            db = get_session()
+            try:
+                cam = _cams.get(db, camera_id)
+                if cam is not None and cam.roi_row(Domain.FLOOD.value):
+                    return RoiConfig.from_dict(_cams.to_roi_config_dict(cam))
+            finally:
+                db.close()
+        except Exception:  # noqa: BLE001
+            # DB 장애로 ROI 를 통째로 잃는 것보다, 아래 파일 폴백으로
+            # 내려가는 편이 낫다 — _load_blocks() 가 DB 실패 시 blocks.json
+            # 으로 내려가는 것과 같은 방어 패턴이다.
+            pass
+    if fallback_path is not None:
+        return load_roi_config(fallback_path)
+    return RoiConfig()
+
+
 def save_roi_config(cfg: RoiConfig, path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -142,6 +185,39 @@ def polygon_area_pixels(polygons: PolygonList, height: int, width: int) -> int:
     if not polygons:
         return 0
     return int(np.count_nonzero(polygon_mask(polygons, height, width)))
+
+
+def scale_polygons(polygons: PolygonList,
+                   from_wh: tuple[int | None, int | None],
+                   to_wh: tuple[int | None, int | None]) -> PolygonList:
+    """ROI 를 그린 정지영상 해상도 → 실제 캡처 해상도로 좌표를 옮긴다.
+
+    ROI 는 **정지영상의 픽셀 좌표**로 저장된다(정규화 좌표가 아니다). 그
+    정지영상과 실제 라이브 프레임의 해상도가 다르면(카메라 교체·스트림
+    프로파일 변경 등) 폴리곤이 엉뚱한 자리를 가리킨다.
+
+    ⚠️ **어느 한쪽이라도 크기를 모르면 원본을 그대로 돌려준다.** 잘못
+    늘이는 것보다 그대로 두는 편이 낫다 — 이 코드베이스의 일관된 원칙이다
+    (``load_roi_for_camera`` 의 빈 설정 폴백과 같은 이유).
+
+    ⚠️ 단순 비율 스케일이라 **종횡비가 달라지는 리사이즈(레터박스·크롭)에는
+    정확하지 않다.** 1차 범위는 「해상도 크기만 다르고 종횡비는 같은」
+    경우로 한정한다(레터박스 보정은 2차 과제).
+    """
+    fw, fh = from_wh
+    tw, th = to_wh
+    if not (fw and fh and tw and th):
+        return polygons or []
+    if int(fw) == int(tw) and int(fh) == int(th):
+        return polygons or []
+    sx, sy = float(tw) / float(fw), float(th) / float(fh)
+    out: PolygonList = []
+    for poly in polygons or []:
+        if not poly:
+            continue
+        out.append([[int(round(float(x) * sx)), int(round(float(y) * sy))]
+                    for x, y in poly])
+    return out
 
 
 def point_in_polygons(point: tuple[float, float], polygons: PolygonList) -> bool:
