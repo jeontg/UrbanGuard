@@ -34,6 +34,11 @@ dependencies = [
     "trackers>=2.6",
     "lapx>=0.5",
     "torch>=2.2",
+    # torch만으로는 안 딸려온다 — crowd/live_analyzer.py(Faster R-CNN),
+    # flood/water_segmentation_tv.py(torchvision 세그멘테이션 모델)가 직접
+    # 임포트한다. 2026-09-10, 실제로 이게 빠져 있어 fresh install에서
+    # ModuleNotFoundError가 났던 것을 발견해 추가.
+    "torchvision>=0.17",
     "fastapi>=0.116",
     "uvicorn[standard]>=0.35",
     "jinja2>=3.1",
@@ -53,6 +58,18 @@ dependencies = [
     # 의존성이 빠질 때 조용히 사라질 수 있다.
     "psutil>=6.0",
     "imageio-ffmpeg>=0.6.0",
+    # DB(core/db.py·core/models.py 등 core/ 전반)·마이그레이션(migrations/).
+    # 개발 중 임시로 pip install만 해 두고 여기 반영을 안 해, fresh install
+    # 시 sqlalchemy/alembic/psycopg가 전부 없어 처음부터 안 되던 것을
+    # 2026-09-10에 발견해 추가했다 — 지금까지 이 파일만 보고 설치한
+    # 사람은 아무도 정상 기동을 못 했을 것이다.
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    # DATABASE_URL이 postgresql+psycopg:// (psycopg 3, core/db.py)를 쓴다.
+    # binary extra로 컴파일 도구 없이 설치되게 한다(Windows에서 특히 중요).
+    "psycopg[binary]>=3.1",
+    # 비밀번호 해싱(core/security.py) — 로그인이 이것 없이는 아예 안 됨.
+    "bcrypt>=4.0",
 ]
 
 [project.optional-dependencies]
