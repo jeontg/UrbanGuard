@@ -42,6 +42,14 @@ def engine():
             database_url(),
             pool_pre_ping=True,   # 유휴 연결이 끊긴 뒤의 첫 요청 실패를 막는다
             future=True,
+            # 2026-09-11 — 다른 PC에 새로 설치할 때 initdb가 그 Windows의
+            # 시스템 로캘을 기준으로 인코딩을 정해, 개발 PC와 달리 SQL_ASCII로
+            # 잡히는 경우가 있었다(실제 설치 중 재현). SQL_ASCII면 psycopg가
+            # 디코딩을 아예 안 하고 서버 버전 문자열 등을 bytes로 돌려줘
+            # SQLAlchemy가 `TypeError: cannot use a string pattern on a
+            # bytes-like object`로 죽는다 — 서버 쪽 로캘/인코딩과 무관하게
+            # 클라이언트 인코딩을 명시해 이 문제 자체를 없앤다.
+            connect_args={"client_encoding": "utf8"},
         )
         _SessionLocal = sessionmaker(bind=_engine, class_=Session,
                                      expire_on_commit=False, future=True)

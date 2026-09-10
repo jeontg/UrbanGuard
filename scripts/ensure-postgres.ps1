@@ -86,12 +86,63 @@ if (-not (Test-Path $PgCtl)) {
     Write-Host "[ensure-postgres] FAILED - pg_ctl not found: $PgCtl"
     exit 1
 }
-if (-not (Test-Path $PgData)) {
-    Write-Host "[ensure-postgres] FAILED - data directory not found: $PgData"
-    exit 1
-}
 if (-not (Test-Path $LogDir)) {
     New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+}
+
+if (-not (Test-Path $PgData)) {
+    # 2026-09-11 — 예전엔 여기서 그냥 실패했다("데이터 디렉터리가 없으니
+    # 기존 PC의 .tools\pgdata 를 그대로 복사해 오라"는 전제였음). 그런데
+    # 실제 신규 설치에서 pgdata를 통째로 복사하는 건 그 PC의 실제 운영
+    # 데이터(계정 등)까지 옮기는 것이라 바람직하지 않다 — 대신 여기서
+    # 최초 1회 새로 초기화한다.
+    Write-Host "[ensure-postgres] data directory not found - initializing a new one (first run)."
+
+    $InitDb = Join-Path $PgBin 'initdb.exe'
+    if (-not (Test-Path $InitDb)) {
+        Write-Host "[ensure-postgres] FAILED - initdb not found: $InitDb"
+        exit 1
+    }
+
+    # ⚠️ --encoding/--locale을 반드시 명시한다 — 안 넘기면 initdb가 이
+    #   Windows의 시스템 로캘을 보고 인코딩을 스스로 정하는데, 그 결과가
+    #   SQL_ASCII로 잡히는 PC가 실제로 있었다(다른 PC에 새로 설치하던 중
+    #   재현). SQL_ASCII 서버에서는 psycopg가 디코딩을 아예 안 해 문자열
+    #   대신 bytes를 돌려주고, SQLAlchemy가 서버 버전 문자열을 정규식으로
+    #   파싱하다 `TypeError: cannot use a string pattern on a bytes-like
+    #   object`로 죽는다(core/db.py의 client_encoding 방어 코드와 짝을
+    #   이루는 근본 수정 — 그쪽은 이미 SQL_ASCII로 잡힌 기존 인스턴스를
+    #   위한 방어, 이쪽은 애초에 그렇게 안 잡히게 하는 예방).
+    # ⚠️ --auth=trust — 이 인스턴스는 127.0.0.1에서만 듣는 저장소 전용
+    #   로컬 개발 DB다(위 파일 헤더 설명 참고). 운영 배포는 별도 DB를 쓴다.
+    & $InitDb -D $PgData -U postgres --encoding=UTF8 --locale=C --auth=trust *>> $PgLog
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ensure-postgres] FAILED - initdb exited $LASTEXITCODE. See $PgLog"
+        exit 1
+    }
+
+    & $PgCtl -D $PgData -o "-p $PgPort" -l $PgLog -w -t $TimeoutSec start
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ensure-postgres] FAILED - pg_ctl (post-initdb start) exited $LASTEXITCODE. See $PgLog"
+        exit 1
+    }
+
+    # 앱이 실제로 쓰는 역할·DB를 만든다 — core/db.py::DEFAULT_URL
+    # ("urbanguard" role/password/db)과 반드시 일치해야 한다. 두 곳이
+    # 어긋나면 "DB는 떴는데 앱만 인증 실패"라는 새로운 헷갈림이 생긴다.
+    $CreateUser = Join-Path $PgBin 'createuser.exe'
+    $CreateDb = Join-Path $PgBin 'createdb.exe'
+    $Psql = Join-Path $PgBin 'psql.exe'
+    & $CreateUser -U postgres -p $PgPort urbanguard *>> $PgLog
+    & $Psql -U postgres -p $PgPort -d postgres -c "ALTER ROLE urbanguard WITH PASSWORD 'ug_dev_2026';" *>> $PgLog
+    & $CreateDb -U postgres -p $PgPort -O urbanguard urbanguard *>> $PgLog
+
+    if (Test-UgPostgres -PgPort $PgPort) {
+        Write-Host "[ensure-postgres] OK - initialized a new instance and created the 'urbanguard' role/db."
+        exit 0
+    }
+    Write-Host "[ensure-postgres] FAILED - initialized but port $PgPort never opened. See $PgLog"
+    exit 1
 }
 
 # ⚠️ pg_ctl start 는 postgres.exe 를 새로 띄우고, 그 프로세스는 서비스가

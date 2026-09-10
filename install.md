@@ -189,8 +189,10 @@ powershell -ExecutionPolicy Bypass -File scripts\ensure-postgres.ps1
 > 이 스크립트가 자기 것(`.tools\pgsql`)을 5433으로 새로 띄우는지
 > 확인하세요.
 
-> **처음 실행 시 "초기화 중..." 같은 메시지와 함께 시간이 좀 걸리는 것은
-> 정상**입니다(최초 1회만).
+> **최초 1회는 "data directory not found - initializing a new one"이라는
+> 메시지와 함께 몇십 초 더 걸립니다 — 정상입니다.** 이때 데이터베이스를
+> 새로 만들고 앱 전용 계정(`urbanguard`)까지 자동으로 만듭니다. 두 번째
+> 실행부터는 이 과정 없이 바로 뜹니다.
 
 ---
 
@@ -210,6 +212,15 @@ alembic upgrade head
 > **DB 접속 오류(`could not connect` 등)가 나면** → 6단계가 제대로 안 된
 > 것입니다. 6단계로 돌아가 `ensure-postgres.ps1`이 성공 메시지를 내는지
 > 다시 확인하세요.
+
+> **`TypeError: cannot use a string pattern on a bytes-like object`가
+> 나면** → 실제로 다른 PC 설치 중 나온 오류입니다. 원인은 그 PC의
+> Windows 로캘 때문에 PostgreSQL이 `SQL_ASCII`라는 인코딩으로 초기화돼,
+> 파이썬 쪽 라이브러리가 응답을 문자열 대신 바이트로 받아 생기는
+> 충돌입니다(코드 결함이었고, 2026-09-11에 이미 고쳤습니다). **`git
+> pull`로 최신 코드를 받은 뒤 다시 시도**하면 기존 데이터베이스를 새로
+> 만들지 않고도 그대로 해결됩니다. 그래도 나면 `data\logs\pg-console.log`
+> 내용과 함께 알려주세요.
 
 ---
 

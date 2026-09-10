@@ -36,9 +36,13 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    # client_encoding 명시 이유는 core/db.py::engine()의 같은 인자 주석 참고
+    # — 다른 PC의 initdb가 SQL_ASCII로 잡히면 psycopg가 bytes를 돌려줘
+    # SQLAlchemy가 서버 버전 파싱 중 TypeError로 죽는 문제를 막는다.
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.", poolclass=pool.NullPool)
+        prefix="sqlalchemy.", poolclass=pool.NullPool,
+        connect_args={"client_encoding": "utf8"})
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata,
                           compare_type=True)
