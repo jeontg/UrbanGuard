@@ -82,6 +82,9 @@ Open API 키, SOLAPI SMS/Kakao 키, `URBANGUARD_SECRET_KEY`(운영 배포 시
 
 ## 설치
 
+전체 절차(포터블 바이너리·모델 가중치 등 git에 없는 준비물 포함)는
+[install.md](install.md)에 단계별로 정리돼 있다. 개요만 보면:
+
 ```bash
 git clone https://github.com/jeontg/UrbanGuard.git
 cd UrbanGuard
