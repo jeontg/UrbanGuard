@@ -20,6 +20,15 @@ from alembic import op
 #   패키지에 의존하면 안 되고, 과거 마이그레이션이 과거에 없던 값을 심으면
 #   안 된다). 서비스 기동 시 ``vocabulary.seed_builtin()`` 이 멱등하게 다시
 #   심으므로 이 목록이 최신과 갈라져도 문제되지 않는다.
+#
+# ★★ 2026-09-11 — 'road' 3행을 여기서 뺐다. risk_levels 에 'road_watch' 등
+#   코드가 아직 없는 시점(이 마이그레이션 시점)에 level_thresholds가 그
+#   코드를 참조(FK)하려 해 완전히 새로 설치할 때 ForeignKeyViolation으로
+#   죽는 것을 실제 신규 설치 테스트로 발견했다. 개발 DB에서는 어쩌다
+#   문제가 안 됐을 뿐 순서 자체가 처음부터 잘못돼 있었다 — 'road' 행은
+#   risk_levels 에 그 코드를 실제로 만드는 c5b8e2f31d47(등급의 성격(kind)과
+#   노면 정비 등급)이 이미 멱등하게(WHERE NOT EXISTS) 심고 있으므로 여기서
+#   중복으로 넣을 필요도 없다.
 DEFAULT_THRESHOLDS = [
     ('flood', 'caution', 5.0, 'cm', '행안부 지하차도 통제 기준(15→5cm 강화)'),
     ('flood', 'alert', 15.0, 'cm', '차량 접지력 상실 시작 (NWS/FEMA)'),
@@ -27,9 +36,6 @@ DEFAULT_THRESHOLDS = [
     ('crowd', 'caution', 3.0, '명/㎡', '혼잡 시작'),
     ('crowd', 'alert', 4.0, '명/㎡', '영국 이동 대기열 한계'),
     ('crowd', 'severe', 5.0, '명/㎡', '국제 압사 임계'),
-    ('road', 'road_watch', 1.0, '건/100m', '구간 보정 후 손상이 보이기 시작'),
-    ('road', 'road_repair', 3.0, '건/100m', '보수 계획 수립 권고'),
-    ('road', 'road_urgent', 6.0, '건/100m', '즉시 보수 대상'),
 ]
 
 revision = "c8e19a45b072"

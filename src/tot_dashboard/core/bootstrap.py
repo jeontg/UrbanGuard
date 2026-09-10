@@ -16,10 +16,21 @@ import argparse
 import secrets
 import sys
 
-from .db import get_session
-from .models import User, UserDomain
-from .roles import Domain, Role
-from .security import hash_password, password_problem
+from dotenv import load_dotenv
+
+from ..common.config import PROJECT_ROOT
+
+# ⚠️ 2026-09-11, 신규 설치 실기 테스트로 발견 — 서비스(main.py 등)는 전부
+#   기동 시 .env를 읽는데, 이 CLI만 안 읽고 있었다. 그래서 .env에
+#   URBANGUARD_DATABASE_URL을 다르게 설정해 둬도 이 명령은 그걸 무시하고
+#   core/db.py의 DEFAULT_URL로 접속해, "계정을 만들었는데 실제 서비스가
+#   보는 DB엔 없다"는 헷갈리는 상황이 생길 수 있었다.
+load_dotenv(PROJECT_ROOT / ".env")
+
+from .db import get_session  # noqa: E402
+from .models import User, UserDomain  # noqa: E402
+from .roles import Domain, Role  # noqa: E402
+from .security import hash_password, password_problem  # noqa: E402
 
 
 def generate_password() -> str:

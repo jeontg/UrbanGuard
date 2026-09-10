@@ -130,18 +130,24 @@ if (-not (Test-Path $PgData)) {
     # 앱이 실제로 쓰는 역할·DB를 만든다 — core/db.py::DEFAULT_URL
     # ("urbanguard" role/password/db)과 반드시 일치해야 한다. 두 곳이
     # 어긋나면 "DB는 떴는데 앱만 인증 실패"라는 새로운 헷갈림이 생긴다.
+    # ⚠️ $PgLog로 남기지 않는다 — 방금 뜬 postgres.exe가 그 파일을 자기
+    #   서버 로그로 계속 열어 두고 있어(위 "여러 곳에서 부를 수 있다" 문단
+    #   과 같은 종류의 핸들 상속 문제), 같은 파일에 또 쓰려 하면
+    #   "다른 프로세스가 사용 중"으로 실패한다(실제로 겪음, 2026-09-11).
+    #   별도 파일에 남긴다.
+    $PgInitLog = Join-Path $LogDir 'pg-init-console.log'
     $CreateUser = Join-Path $PgBin 'createuser.exe'
     $CreateDb = Join-Path $PgBin 'createdb.exe'
     $Psql = Join-Path $PgBin 'psql.exe'
-    & $CreateUser -U postgres -p $PgPort urbanguard *>> $PgLog
-    & $Psql -U postgres -p $PgPort -d postgres -c "ALTER ROLE urbanguard WITH PASSWORD 'ug_dev_2026';" *>> $PgLog
-    & $CreateDb -U postgres -p $PgPort -O urbanguard urbanguard *>> $PgLog
+    & $CreateUser -U postgres -p $PgPort urbanguard *>> $PgInitLog
+    & $Psql -U postgres -p $PgPort -d postgres -c "ALTER ROLE urbanguard WITH PASSWORD 'ug_dev_2026';" *>> $PgInitLog
+    & $CreateDb -U postgres -p $PgPort -O urbanguard urbanguard *>> $PgInitLog
 
     if (Test-UgPostgres -PgPort $PgPort) {
         Write-Host "[ensure-postgres] OK - initialized a new instance and created the 'urbanguard' role/db."
         exit 0
     }
-    Write-Host "[ensure-postgres] FAILED - initialized but port $PgPort never opened. See $PgLog"
+    Write-Host "[ensure-postgres] FAILED - initialized but port $PgPort never opened. See $PgLog / $PgInitLog"
     exit 1
 }
 

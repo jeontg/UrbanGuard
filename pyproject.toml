@@ -70,6 +70,20 @@ dependencies = [
     "psycopg[binary]>=3.1",
     # 비밀번호 해싱(core/security.py) — 로그인이 이것 없이는 아예 안 됨.
     "bcrypt>=4.0",
+    # 2026-09-11 — 진짜 신규 설치(fresh clone) 테스트로 추가 발견한 누락.
+    # 로그인 세션 서명(core/security.py, 모듈 최상단 임포트라 없으면 로그인
+    # 자체가 기동 시점에 죽는다).
+    "itsdangerous>=2.1",
+    # 인파(crowd) 밀집도 히트맵(crowd/heatmap.py, live_analyzer.py가 항상
+    # 불러오는 기본 경로 — crowd-gpu 확장이 아니어도 필요).
+    "scipy>=1.11",
+    # 환경 센서 HTTP 폴링(crowd/field_sensors.py).
+    "requests>=2.31",
+    # 서비스 관리 화면의 서비스 간 상태 조회(service/routes_services.py).
+    "httpx>=0.27",
+    # ByteTrack 계열 추적기의 헝가리안 알고리즘 백엔드
+    # (flood/object_detection.py가 직접 확인차 임포트한다).
+    "lap>=0.5",
 ]
 
 [project.optional-dependencies]
